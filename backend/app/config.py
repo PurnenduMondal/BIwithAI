@@ -25,9 +25,13 @@ class Settings(BaseSettings):
         "http://localhost:3000",
         "http://localhost:5173",
     ]
+    ALLOWED_ORIGINS: Optional[str] = None  # Comma-separated string alternative to CORS_ORIGINS
     
     # Database
-    DATABASE_URL: str = "postgresql+asyncpg://postgres:1204@localhost:5432/bi_with_ai"
+    DATABASE_URL: str = None
+    POSTGRES_USER: Optional[str] = None
+    POSTGRES_PASSWORD: Optional[str] = None
+    POSTGRES_DB: Optional[str] = None
     DB_ECHO: bool = False
     DB_POOL_SIZE: int = 5
     DB_MAX_OVERFLOW: int = 10
