@@ -1,0 +1,91 @@
+Base URL: https://api.yourdomain.com/v1
+
+Authentication:
+├── POST   /auth/register
+├── POST   /auth/login
+├── POST   /auth/logout
+├── POST   /auth/refresh
+├── POST   /auth/forgot-password
+└── POST   /auth/reset-password
+
+Users:
+├── GET    /users/me
+├── PUT    /users/me
+├── DELETE /users/me
+└── GET    /users/me/preferences
+
+Organizations:
+├── GET    /organizations
+├── POST   /organizations
+├── GET    /organizations/{id}
+├── PUT    /organizations/{id}
+├── DELETE /organizations/{id}
+├── GET    /organizations/{id}/members
+├── POST   /organizations/{id}/members
+└── DELETE /organizations/{id}/members/{user_id}
+
+Data Sources:
+├── GET    /data-sources
+├── POST   /data-sources
+├── GET    /data-sources/{id}
+├── PUT    /data-sources/{id}
+├── DELETE /data-sources/{id}
+├── POST   /data-sources/{id}/test-connection
+├── POST   /data-sources/{id}/sync
+├── GET    /data-sources/{id}/schema
+├── GET    /data-sources/{id}/preview
+└── GET    /data-sources/{id}/statistics
+
+Dashboards:
+├── GET    /dashboards
+├── POST   /dashboards
+├── GET    /dashboards/{id}
+├── PUT    /dashboards/{id}
+├── DELETE /dashboards/{id}
+├── POST   /dashboards/{id}/duplicate
+├── POST   /dashboards/{id}/share
+├── GET    /dashboards/{id}/export?format=pdf|png|json
+├── POST   /dashboards/generate (Auto-generate)
+└── GET    /dashboards/templates
+
+Widgets:
+├── GET    /dashboards/{dashboard_id}/widgets
+├── POST   /dashboards/{dashboard_id}/widgets
+├── GET    /widgets/{id}
+├── PUT    /widgets/{id}
+├── DELETE /widgets/{id}
+├── GET    /widgets/{id}/data
+└── POST   /widgets/{id}/refresh
+
+Insights:
+├── GET    /dashboards/{id}/insights
+├── POST   /dashboards/{id}/insights/generate
+├── GET    /insights/{id}
+└── DELETE /insights/{id}
+
+Analytics:
+├── POST   /analytics/query (NLP query)
+├── GET    /analytics/forecast?metric=...&periods=...
+├── GET    /analytics/correlation?metrics[]=...
+└── GET    /analytics/anomalies?threshold=...
+
+Alerts:
+├── GET    /alerts
+├── POST   /alerts
+├── GET    /alerts/{id}
+├── PUT    /alerts/{id}
+├── DELETE /alerts/{id}
+└── GET    /alerts/history
+
+Export:
+├── POST   /export/dashboard/{id}?format=pdf
+├── POST   /export/widget/{id}?format=png
+└── GET    /export/jobs/{job_id}/status
+
+Admin:
+├── GET    /admin/usage-stats
+├── GET    /admin/audit-logs
+└── GET    /admin/system-health
+
+WebSocket:
+└── WS     /ws/realtime?token=...
