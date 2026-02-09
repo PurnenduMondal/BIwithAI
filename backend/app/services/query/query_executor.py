@@ -14,7 +14,8 @@ class QueryExecutor:
     async def execute_widget_query(
         self,
         df: pd.DataFrame,
-        config: Dict[str, Any]
+        config: Dict[str, Any],
+        widget_type: str = 'table'
     ) -> Dict[str, Any]:
         """
         Execute query based on widget configuration
@@ -22,6 +23,7 @@ class QueryExecutor:
         Args:
             df: Source DataFrame
             config: Widget configuration containing query parameters
+            widget_type: Type of widget (chart, metric, table, text, ai_insight)
             
         Returns:
             Dictionary with 'data', 'columns', and optional 'metadata'
@@ -29,48 +31,26 @@ class QueryExecutor:
         try:
             result_df = df.copy()
             
-            # Apply filters
+            # Apply filters (common for all widget types)
             if 'filters' in config and config['filters']:
                 result_df = self._apply_filters(result_df, config['filters'])
             
-            # Apply grouping and aggregations
-            if 'groupBy' in config and config['groupBy']:
-                result_df = self._apply_grouping(result_df, config)
-            
-            # Apply sorting
-            if 'sortBy' in config and config['sortBy']:
-                result_df = self._apply_sorting(result_df, config['sortBy'])
-            
-            # Apply limit
-            limit = config.get('limit', 1000)
-            if limit:
-                result_df = result_df.head(limit)
-            
-            # Select specific columns if specified
-            if 'columns' in config and config['columns']:
-                available_cols = [col for col in config['columns'] if col in result_df.columns]
-                if available_cols:
-                    result_df = result_df[available_cols]
-            
-            # Convert to response format
-            data = result_df.to_dict('records')
-            columns = result_df.columns.tolist()
-            
-            metadata = {
-                'row_count': len(result_df),
-                'column_count': len(columns),
-                'total_rows_before_limit': len(df)
-            }
-            
-            # Add aggregation metadata if applicable
-            if 'aggregations' in config and config['aggregations']:
-                metadata['aggregations'] = config['aggregations']
-            
-            return {
-                'data': data,
-                'columns': columns,
-                'metadata': metadata
-            }
+            # Handle different widget types
+            if widget_type == 'chart':
+                return self._execute_chart_query(result_df, config)
+            elif widget_type == 'metric':
+                return self._execute_metric_query(result_df, config)
+            elif widget_type == 'table':
+                return self._execute_table_query(result_df, config)
+            elif widget_type == 'text':
+                # Text widgets don't need data processing
+                return {'data': [], 'columns': [], 'metadata': {}}
+            elif widget_type == 'ai_insight':
+                # AI insights might need full data or summary
+                return self._execute_table_query(result_df, config)
+            else:
+                # Default to table-like behavior
+                return self._execute_table_query(result_df, config)
             
         except Exception as e:
             logger.error(f"Error executing widget query: {str(e)}", exc_info=True)
@@ -80,12 +60,253 @@ class QueryExecutor:
                 'metadata': {'error': str(e)}
             }
     
+    def _execute_chart_query(
+        self,
+        df: pd.DataFrame,
+        config: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Execute query for chart widgets"""
+        x_axis = config.get('x_axis')
+        y_axis = config.get('y_axis')
+        aggregation = config.get('aggregation', 'sum')
+        chart_type = config.get('chart_type', 'bar')
+        
+        if not x_axis or not y_axis:
+            return {
+                'data': [],
+                'columns': [],
+                'metadata': {'error': 'x_axis and y_axis are required for chart widgets'}
+            }
+        
+        # Validate columns exist
+        if x_axis not in df.columns or y_axis not in df.columns:
+            return {
+                'data': [],
+                'columns': [],
+                'metadata': {'error': f'Columns {x_axis} or {y_axis} not found in data'}
+            }
+        
+        try:
+            # Clean up x_axis values (remove leading/trailing whitespace from strings)
+            if df[x_axis].dtype == 'object':
+                df = df.copy()
+                df[x_axis] = df[x_axis].astype(str).str.strip()
+            
+            # Handle percentage aggregation separately
+            if aggregation == 'percentage':
+                # For percentage, first sum the values
+                logger.info(f"Grouping by {x_axis}, calculating percentage of {y_axis}")
+                result_df = df.groupby(x_axis, as_index=False).agg({y_axis: 'sum'})
+                # Calculate percentage of total (keep as numeric for now)
+                total = result_df[y_axis].sum()
+                if total > 0:
+                    result_df[y_axis] = (result_df[y_axis] / total) * 100
+                else:
+                    result_df[y_axis] = 0
+            else:
+                # Group by x_axis and aggregate y_axis
+                logger.info(f"Grouping by {x_axis}, aggregating {y_axis} with {aggregation}")
+                result_df = df.groupby(x_axis, as_index=False).agg({y_axis: aggregation})
+            
+            logger.info(f"After groupby: {len(result_df)} rows, columns: {result_df.columns.tolist()}")
+            
+            # For pie charts, take top N categories (do this before formatting)
+            if chart_type == 'pie':
+                result_df = result_df.nlargest(10, y_axis)
+            else:
+                # Sort by x_axis for better visualization
+                try:
+                    result_df = result_df.sort_values(by=x_axis)
+                except:
+                    # If sorting fails (e.g., mixed types), skip sorting
+                    pass
+            
+            # Format percentage values as strings with % symbol (after sorting/filtering)
+            if aggregation == 'percentage':
+                result_df[y_axis] = result_df[y_axis].apply(lambda x: f"{x:.2f}%")
+            
+            data = result_df.to_dict('records')
+            columns = result_df.columns.tolist()
+            
+            metadata = {
+                'row_count': len(result_df),
+                'chart_type': chart_type,
+                'x_axis': x_axis,
+                'y_axis': y_axis,
+                'aggregation': aggregation
+            }
+            
+            return {
+                'data': data,
+                'columns': columns,
+                'metadata': metadata
+            }
+            
+        except Exception as e:
+            logger.error(f"Error executing chart query: {str(e)}", exc_info=True)
+            return {
+                'data': [],
+                'columns': [],
+                'metadata': {'error': str(e)}
+            }
+    
+    def _execute_metric_query(
+        self,
+        df: pd.DataFrame,
+        config: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Execute query for metric widgets"""
+        metric_field = config.get('metric')
+        aggregation = config.get('aggregation', 'sum')
+        date_column = config.get('date_column')
+        comparison_period = config.get('comparison_period')
+        
+        if not metric_field:
+            return {
+                'value': 0,
+                'change': 0,
+                'error': 'metric field is required for metric widgets'
+            }
+        
+        if metric_field not in df.columns:
+            return {
+                'value': 0,
+                'change': 0,
+                'error': f'Column {metric_field} not found in data'
+            }
+        
+        try:
+            # Helper function to calculate aggregation
+            def calculate_value(data):
+                if aggregation == 'sum':
+                    return data[metric_field].sum()
+                elif aggregation == 'avg' or aggregation == 'mean':
+                    return data[metric_field].mean()
+                elif aggregation == 'count':
+                    return data[metric_field].count()
+                elif aggregation == 'min':
+                    return data[metric_field].min()
+                elif aggregation == 'max':
+                    return data[metric_field].max()
+                else:
+                    return data[metric_field].sum()
+            
+            # Calculate current value
+            current_value = calculate_value(df)
+            change = 0
+            
+            # Calculate change if comparison period is configured
+            if date_column and comparison_period and date_column in df.columns:
+                try:
+                    # Convert date column to datetime
+                    df_copy = df.copy()
+                    df_copy[date_column] = pd.to_datetime(df_copy[date_column])
+                    
+                    # Get max date (most recent date in dataset)
+                    max_date = df_copy[date_column].max()
+                    
+                    # Calculate period boundaries based on comparison_period
+                    if comparison_period == 'previous_week':
+                        current_start = max_date - pd.Timedelta(days=7)
+                        previous_start = max_date - pd.Timedelta(days=14)
+                        previous_end = current_start
+                    elif comparison_period == 'previous_month':
+                        current_start = max_date - pd.DateOffset(months=1)
+                        previous_start = max_date - pd.DateOffset(months=2)
+                        previous_end = current_start
+                    elif comparison_period == 'previous_quarter':
+                        current_start = max_date - pd.DateOffset(months=3)
+                        previous_start = max_date - pd.DateOffset(months=6)
+                        previous_end = current_start
+                    elif comparison_period == 'previous_year':
+                        current_start = max_date - pd.DateOffset(years=1)
+                        previous_start = max_date - pd.DateOffset(years=2)
+                        previous_end = current_start
+                    else:
+                        # Default to previous month if period not recognized
+                        current_start = max_date - pd.DateOffset(months=1)
+                        previous_start = max_date - pd.DateOffset(months=2)
+                        previous_end = current_start
+                    
+                    # Filter data for current period
+                    current_period_df = df_copy[df_copy[date_column] >= current_start]
+                    current_value = calculate_value(current_period_df)
+                    
+                    # Filter data for previous period
+                    previous_period_df = df_copy[
+                        (df_copy[date_column] >= previous_start) &
+                        (df_copy[date_column] < previous_end)
+                    ]
+                    previous_value = calculate_value(previous_period_df)
+                    
+                    # Calculate percentage change
+                    if previous_value and previous_value != 0:
+                        change = ((current_value - previous_value) / previous_value) * 100
+                    
+                    logger.info(f"Comparison: current={current_value}, previous={previous_value}, change={change}%")
+                
+                except Exception as e:
+                    logger.warning(f"Could not calculate comparison: {str(e)}")
+                    # Continue without comparison, change stays 0
+            
+            # Return simplified format for metric widgets
+            return {
+                'value': float(current_value) if pd.notna(current_value) else 0,
+                'change': float(change) if pd.notna(change) else 0,
+                'metric': metric_field,
+                'aggregation': aggregation
+            }
+            
+        except Exception as e:
+            logger.error(f"Error executing metric query: {str(e)}", exc_info=True)
+            return {
+                'value': 0,
+                'change': 0,
+                'error': str(e)
+            }
+    
+    def _execute_table_query(
+        self,
+        df: pd.DataFrame,
+        config: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Execute query for table widgets"""
+        result_df = df.copy()
+        
+        # Apply limit
+        limit = config.get('limit', 100)
+        if limit:
+            result_df = result_df.head(limit)
+        
+        # Select specific columns if specified
+        if 'columns' in config and config['columns']:
+            available_cols = [col for col in config['columns'] if col in result_df.columns]
+            if available_cols:
+                result_df = result_df[available_cols]
+        
+        # Convert to response format
+        data = result_df.to_dict('records')
+        columns = result_df.columns.tolist()
+        
+        metadata = {
+            'row_count': len(result_df),
+            'column_count': len(columns),
+            'total_rows_before_limit': len(df)
+        }
+        
+        return {
+            'data': data,
+            'columns': columns,
+            'metadata': metadata
+        }
+    
     def _apply_filters(self, df: pd.DataFrame, filters: List[Dict[str, Any]]) -> pd.DataFrame:
         """Apply filters to DataFrame"""
         result_df = df.copy()
         
         for filter_config in filters:
-            column = filter_config.get('column')
+            # Support both 'field' (from frontend) and 'column' (legacy)
+            column = filter_config.get('field') or filter_config.get('column')
             operator = filter_config.get('operator')
             value = filter_config.get('value')
             
@@ -106,7 +327,7 @@ class QueryExecutor:
                 elif operator == 'less_equal':
                     result_df = result_df[result_df[column] <= value]
                 elif operator == 'contains':
-                    result_df = result_df[result_df[column].astype(str).str.contains(str(value), na=False)]
+                    result_df = result_df[result_df[column].astype(str).str.contains(str(value), na=False, case=False)]
                 elif operator == 'starts_with':
                     result_df = result_df[result_df[column].astype(str).str.startswith(str(value), na=False)]
                 elif operator == 'ends_with':
@@ -127,64 +348,3 @@ class QueryExecutor:
                 continue
         
         return result_df
-    
-    def _apply_grouping(self, df: pd.DataFrame, config: Dict[str, Any]) -> pd.DataFrame:
-        """Apply grouping and aggregations"""
-        group_by = config.get('groupBy', [])
-        aggregations = config.get('aggregations', {})
-        
-        if not group_by or not aggregations:
-            return df
-        
-        try:
-            # Validate group by columns exist
-            valid_group_cols = [col for col in group_by if col in df.columns]
-            if not valid_group_cols:
-                return df
-            
-            # Build aggregation dictionary
-            agg_dict = {}
-            for col, agg_func in aggregations.items():
-                if col in df.columns:
-                    if agg_func == 'count':
-                        agg_dict[col] = 'count'
-                    elif agg_func == 'sum':
-                        agg_dict[col] = 'sum'
-                    elif agg_func == 'avg' or agg_func == 'mean':
-                        agg_dict[col] = 'mean'
-                    elif agg_func == 'min':
-                        agg_dict[col] = 'min'
-                    elif agg_func == 'max':
-                        agg_dict[col] = 'max'
-                    elif agg_func == 'std':
-                        agg_dict[col] = 'std'
-                    elif agg_func == 'median':
-                        agg_dict[col] = 'median'
-            
-            if not agg_dict:
-                return df
-            
-            # Perform grouping and aggregation
-            grouped_df = df.groupby(valid_group_cols).agg(agg_dict).reset_index()
-            
-            return grouped_df
-            
-        except Exception as e:
-            logger.error(f"Error applying grouping: {str(e)}")
-            return df
-    
-    def _apply_sorting(self, df: pd.DataFrame, sort_config: Dict[str, Any]) -> pd.DataFrame:
-        """Apply sorting to DataFrame"""
-        try:
-            column = sort_config.get('column')
-            order = sort_config.get('order', 'asc')
-            
-            if not column or column not in df.columns:
-                return df
-            
-            ascending = (order.lower() == 'asc')
-            return df.sort_values(by=column, ascending=ascending)
-            
-        except Exception as e:
-            logger.error(f"Error applying sorting: {str(e)}")
-            return df

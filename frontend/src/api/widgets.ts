@@ -1,5 +1,5 @@
 import apiClient from './client';
-import type { Widget } from './types';
+import type { Widget } from '../types';
 
 export interface CreateWidgetData {
   widget_type: 'chart' | 'metric' | 'table' | 'text' | 'ai_insight';
@@ -21,7 +21,7 @@ export const widgetApi = {
   },
 
   get: async (id: string): Promise<Widget> => {
-    const { data } = await apiClient.get(`/api/v1/widgets/widgets/${id}`);
+    const { data } = await apiClient.get(`/api/v1/widgets/${id}`);
     return data;
   },
 
@@ -34,20 +34,20 @@ export const widgetApi = {
   },
 
   update: async (id: string, widgetData: Partial<CreateWidgetData>): Promise<Widget> => {
-    const { data } = await apiClient.put(`/api/v1/widgets/widgets/${id}`, widgetData);
+    const { data } = await apiClient.put(`/api/v1/widgets/${id}`, widgetData);
     return data;
   },
 
   delete: async (id: string): Promise<void> => {
-    await apiClient.delete(`/api/v1/widgets/widgets/${id}`);
+    await apiClient.delete(`/api/v1/widgets/${id}`);
   },
 
   getData: async (id: string): Promise<any> => {
-    const { data } = await apiClient.get(`/api/v1/widgets/widgets/${id}/data`);
+    const { data } = await apiClient.get(`/api/v1/widgets/${id}/data`);
     return data;
   },
 
   refresh: async (id: string): Promise<void> => {
-    await apiClient.post(`/api/v1/widgets/widgets/${id}/refresh`);
+    await apiClient.post(`/api/v1/widgets/${id}/refresh`);
   },
 };

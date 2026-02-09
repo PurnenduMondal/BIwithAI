@@ -85,7 +85,7 @@ async def create_widget(
     
     return widget
 
-@router.get("/widgets/{widget_id}", response_model=WidgetResponse)
+@router.get("/{widget_id}", response_model=WidgetResponse)
 async def get_widget(
     widget_id: UUID,
     current_user: User = Depends(get_current_user),
@@ -109,7 +109,7 @@ async def get_widget(
     
     return widget
 
-@router.put("/widgets/{widget_id}", response_model=WidgetResponse)
+@router.put("/{widget_id}", response_model=WidgetResponse)
 async def update_widget(
     widget_id: UUID,
     update_data: WidgetUpdate,
@@ -141,7 +141,7 @@ async def update_widget(
     
     return widget
 
-@router.delete("/widgets/{widget_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{widget_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_widget(
     widget_id: UUID,
     current_user: User = Depends(get_current_user),
@@ -169,7 +169,7 @@ async def delete_widget(
     
     return None
 
-@router.get("/widgets/{widget_id}/data")
+@router.get("/{widget_id}/data")
 async def get_widget_data(
     widget_id: UUID,
     current_user: User = Depends(get_current_user),
@@ -224,11 +224,19 @@ async def get_widget_data(
     
     # Execute query based on widget config
     executor = QueryExecutor()
-    result_data = await executor.execute_widget_query(df, widget.config)
+    result_data = await executor.execute_widget_query(df, widget.config, widget.widget_type)
+    
+    # Convert to JSON-safe format using pandas built-in serialization
+    # to_json() handles NaN, Inf, and -Inf automatically
+    if 'data' in result_data and result_data['data']:
+        import json
+        # Convert the data list back to DataFrame, then use to_json for safe serialization
+        temp_df = pd.DataFrame(result_data['data'])
+        result_data['data'] = json.loads(temp_df.to_json(orient='records', date_format='iso'))
     
     return result_data
 
-@router.post("/widgets/{widget_id}/refresh")
+@router.post("/{widget_id}/refresh")
 async def refresh_widget_data(
     widget_id: UUID,
     background_tasks: BackgroundTasks,

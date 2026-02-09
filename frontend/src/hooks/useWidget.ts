@@ -7,6 +7,8 @@ export const useWidgets = (dashboardId: string) => {
     queryKey: ['widgets', dashboardId],
     queryFn: () => widgetApi.list(dashboardId),
     enabled: !!dashboardId,
+    refetchOnMount: 'always',
+    staleTime: 0,
   });
 };
 

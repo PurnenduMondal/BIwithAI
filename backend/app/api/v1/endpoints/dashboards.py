@@ -1,10 +1,10 @@
-from time import timezone
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from typing import List
 from uuid import UUID
+from datetime import timezone
 
 from app.db.session import get_db
 from app.api.deps import get_current_user, get_user_organization
@@ -18,6 +18,7 @@ from app.schemas.dashboard import (
 from app.models.user import User
 from app.models.organization import Organization
 from app.models.dashboard import Dashboard
+from app.models.widget import Widget
 from app.models.data_source import DataSource
 from app.core.security import generate_share_token
 from app.workers.dashboard_generation import generate_dashboard_task
@@ -135,6 +136,10 @@ async def get_dashboard(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Dashboard not found"
         )
+    
+    # Filter out soft-deleted widgets
+    if dashboard.widgets:
+        dashboard.widgets = [w for w in dashboard.widgets if w.deleted_at is None]
     
     return dashboard
 

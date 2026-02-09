@@ -1,75 +1,186 @@
-import { useState } from 'react';
-import GridLayout, { type Layout } from 'react-grid-layout';
+import { useState, useRef, useEffect } from 'react';
+import GridLayout from 'react-grid-layout';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
-import { type Widget } from './types';
+import { type Widget } from '../../types';
 import { WidgetContainer } from '../widgets/WidgetContainer';
-import { useUpdateDashboard } from '../../hooks/useDashboard';
+import { WidgetSettingsSidebar } from '../widgets/WidgetSettingsSidebar';
+import { apiClient } from '../../api/client';
+import { useWidgets } from '../../hooks/useWidget';
+import { PageLoader } from '../common/Loader';
 
 interface DashboardGridProps {
   dashboardId: string;
-  widgets: Widget[];
   isEditing?: boolean;
+  selectedWidget: Widget | null | undefined;
+  onSelectWidget: (widget: Widget | null | undefined) => void;
 }
 
-export const DashboardGrid = ({ dashboardId, widgets, isEditing = false }: DashboardGridProps) => {
-  const updateDashboard = useUpdateDashboard(dashboardId);
-  const [layouts, setLayouts] = useState<Layout[]>(
-    widgets.map((w) => ({
-      i: w.id,
-      x: w.position.x,
-      y: w.position.y,
-      w: w.position.w,
-      h: w.position.h,
-    }))
-  );
+interface LayoutItem {
+  i: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
 
-  const handleLayoutChange = (newLayout: Layout[]) => {
-    if (!isEditing) return;
+export const DashboardGrid = ({ dashboardId, isEditing = false, selectedWidget, onSelectWidget }: DashboardGridProps) => {
+  const { data: widgets, isLoading, error } = useWidgets(dashboardId);
+  const [isDragging, setIsDragging] = useState(false);
+  const [layouts, setLayouts] = useState<LayoutItem[]>([]);
+  
+  // Track pending updates
+  const pendingUpdates = useRef<Map<string, { x: number; y: number; w: number; h: number }>>(new Map());
 
-    setLayouts(newLayout);
+  // Update layouts when widgets data changes
+  useEffect(() => {
+    if (widgets) {
+      setLayouts(widgets.map((w) => ({
+        i: w.id,
+        x: w.position.x,
+        y: w.position.y,
+        w: w.position.w,
+        h: w.position.h,
+      })));
+    }
+  }, [widgets]);
 
-    // Update widget positions in the backend
-    const updatedWidgets = widgets.map((widget) => {
-      const layout = newLayout.find((l) => l.i === widget.id);
-      if (layout) {
-        return {
-          ...widget,
-          position: {
-            x: layout.x,
-            y: layout.y,
-            w: layout.w,
-            h: layout.h,
-          },
-        };
-      }
-      return widget;
-    });
-
-    // You might want to debounce this
-    updateDashboard.mutate({
-      layout_config: { widgets: updatedWidgets },
-    });
+  const handleDragStart = () => {
+    setIsDragging(true);
   };
 
-  return (
-    <GridLayout
-      className="layout"
-      layout={layouts}
-      cols={12}
-      rowHeight={30}
-      width={1200}
-      onLayoutChange={handleLayoutChange}
-      isDraggable={isEditing}
-      isResizable={isEditing}
-      compactType="vertical"
-      preventCollision={false}
-    >
-      {widgets.map((widget) => (
-        <div key={widget.id}>
-          <WidgetContainer widget={widget} isEditing={isEditing} />
+  const handleDragOrResizeStop = (layout: readonly LayoutItem[]) => {
+    setIsDragging(false);
+    
+    if (!widgets) return;
+    
+    // Update all widgets that have changed position or size
+    layout.forEach((item) => {
+      const widget = widgets.find(w => w.id === item.i);
+      if (widget) {
+        const hasChanged = 
+          widget.position.x !== item.x ||
+          widget.position.y !== item.y ||
+          widget.position.w !== item.w ||
+          widget.position.h !== item.h;
+        
+        if (hasChanged) {
+          pendingUpdates.current.set(widget.id, {
+            x: item.x,
+            y: item.y,
+            w: item.w,
+            h: item.h
+          });
+        }
+      }
+    });
+
+    // Execute pending updates
+    if (pendingUpdates.current.size > 0) {
+      updatePendingWidgets();
+    }
+  };
+
+  const updatePendingWidgets = async () => {
+    if (!widgets) return;
+    
+    const updates = Array.from(pendingUpdates.current.entries());
+    pendingUpdates.current.clear();
+
+    // Update each widget individually
+    for (const [widgetId, position] of updates) {
+      const widget = widgets.find(w => w.id === widgetId);
+      if (widget) {
+        try {
+          await apiClient.put(`/api/v1/widgets/${widgetId}`, { position });
+        } catch (error) {
+          console.error(`Failed to update widget ${widgetId}:`, error);
+        }
+      }
+    }
+  };
+
+  const handleLayoutChange = (newLayout: readonly LayoutItem[]) => {
+    if (!isEditing || isDragging) return;
+    setLayouts([...newLayout]);
+  };
+
+  if (isLoading) {
+    return <PageLoader />;
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center">
+          <h3 className="text-lg font-medium text-red-600">Error loading widgets</h3>
+          <p className="text-gray-600 mt-1">Failed to load dashboard widgets. Please try again.</p>
         </div>
-      ))}
-    </GridLayout>
+      </div>
+    );
+  }
+
+  if (!widgets || widgets.length === 0) {
+    return (
+      <>
+        <div className="flex items-center justify-center h-full">
+          <div className="text-center">
+            <h3 className="text-lg font-medium text-gray-900">No widgets yet</h3>
+            <p className="text-gray-600 mt-1">
+              {isEditing ? "Click 'Add Widget' to create your first widget" : "No widgets to display"}
+            </p>
+          </div>
+        </div>
+
+        <WidgetSettingsSidebar
+          widget={selectedWidget === undefined ? null : selectedWidget}
+          dashboardId={dashboardId}
+          isOpen={selectedWidget !== undefined}
+          onClose={() => onSelectWidget(undefined)}
+        />
+      </>
+    );
+  }
+
+  return (
+    <>
+      <GridLayout
+        className="layout"
+        layout={layouts}
+        width={1400}
+        gridConfig={{
+          cols: 12,
+          rowHeight: 30,
+        }}
+        dragConfig={{
+          enabled: isEditing,
+        }}
+        resizeConfig={{
+          enabled: isEditing,
+        }}
+        onLayoutChange={handleLayoutChange}
+        onDragStart={handleDragStart}
+        onDragStop={handleDragOrResizeStop}
+        onResizeStart={handleDragStart}
+        onResizeStop={handleDragOrResizeStop}
+      >
+        {widgets.map((widget) => (
+          <div key={widget.id}>
+            <WidgetContainer 
+              widget={widget} 
+              isEditing={isEditing}
+              onOpenSettings={onSelectWidget}
+            />
+          </div>
+        ))}
+      </GridLayout>
+
+      <WidgetSettingsSidebar
+        widget={selectedWidget === undefined ? null : selectedWidget}
+        dashboardId={dashboardId}
+        isOpen={selectedWidget !== undefined}
+        onClose={() => onSelectWidget(undefined)}
+      />
+    </>
   );
 };
