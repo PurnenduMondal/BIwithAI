@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { type Dashboard } from '@/types';
-import { Button } from '@/components/common/Button';
-import { Modal } from '@/components/common/Modal';
-import { useDeleteDashboard, useDuplicateDashboard } from '@/hooks/useDashboard';
-import { dashboardApi } from '@/api/dashboards';
+import { type DashboardHeaderProps } from '../../types';
+import { Button } from '../common/Button';
+import { Modal } from '../common/Modal';
+import { useDeleteDashboard, useDuplicateDashboard } from '../../hooks/useDashboard';
+import { dashboardApi } from '../../api/dashboards';
 import toast from 'react-hot-toast';
 import {
   PencilIcon,
@@ -13,13 +13,6 @@ import {
   ArrowDownTrayIcon,
   PlusIcon,
 } from '@heroicons/react/24/outline';
-
-interface DashboardHeaderProps {
-  dashboard: Dashboard;
-  onEdit: () => void;
-  isEditing: boolean;
-  onAddWidget?: () => void;
-}
 
 export const DashboardHeader = ({ dashboard, onEdit, isEditing, onAddWidget }: DashboardHeaderProps) => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);

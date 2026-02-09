@@ -1,11 +1,11 @@
-import { type Widget } from '@/types';
+import { type Widget } from '../../types';
 import { useQuery } from '@tanstack/react-query';
-import { widgetApi } from '@/api/widgets';
-import { Loader } from '@/components/common/Loader';
-import { LineChart } from '@/components/charts/LineChart';
-import { BarChart } from '@/components/charts/BarChart';
-import { PieChart } from '@/components/charts/PieChart';
-import { AreaChart } from '@/components/charts/AreaChart';
+import { widgetApi } from '../../api/widgets';
+import { Loader } from '../common/Loader';
+import { LineChart } from '../charts/LineChart';
+import { BarChart } from '../charts/BarChart';
+import { PieChart } from '../charts/PieChart';
+import { AreaChart } from '../charts/AreaChart';
 
 interface ChartWidgetProps {
   widget: Widget;

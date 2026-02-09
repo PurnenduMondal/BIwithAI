@@ -1,4 +1,4 @@
-import { type Widget } from '@/types';
+import { type Widget } from './types';
 import { MetricCard } from './MetricCard';
 import { ChartWidget } from './ChartWidget';
 import { TableWidget } from './TableWidget';

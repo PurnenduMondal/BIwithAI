@@ -1,5 +1,5 @@
 import apiClient from './client';
-import type { Insight } from '@/types';
+import type { Insight } from './types';
 
 export const insightApi = {
   list: async (dashboardId: string): Promise<Insight[]> => {

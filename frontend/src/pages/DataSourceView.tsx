@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useDataSource, useSyncDataSource, useDeleteDataSource } from '@/hooks/useDataSource';
+import { useDataSource, useSyncDataSource, useDeleteDataSource } from '../hooks/useDataSource';
 import { useQuery } from '@tanstack/react-query';
-import { dataSourceApi } from '@/api/dataSources';
-import { Button } from '@/components/common/Button';
-import { PageLoader } from '@/components/common/Loader';
-import { Modal } from '@/components/common/Modal';
+import { dataSourceApi } from '../api/dataSources';
+import { Button } from '../components/common/Button';
+import { PageLoader } from '../components/common/Loader';
+import { Modal } from '../components/common/Modal';
 import {
   ArrowLeftIcon,
   ArrowPathIcon,

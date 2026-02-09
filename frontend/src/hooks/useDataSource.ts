@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { dataSourceApi, type CreateDataSourceData } from '@/api/dataSources';
+import { dataSourceApi, type CreateDataSourceData } from '../api/dataSources';
 import toast from 'react-hot-toast';
 
 export const useDataSources = () => {

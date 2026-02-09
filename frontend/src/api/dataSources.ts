@@ -1,5 +1,5 @@
 import apiClient from './client';
-import type { DataSource } from '@/types';
+import type { DataSource } from './types';
 
 export interface CreateDataSourceData {
   name: string;

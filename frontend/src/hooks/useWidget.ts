@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { widgetApi, type CreateWidgetData } from '@/api/widgets';
+import { widgetApi, type CreateWidgetData } from '../api/widgets';
 import toast from 'react-hot-toast';
 
 export const useWidgets = (dashboardId: string) => {

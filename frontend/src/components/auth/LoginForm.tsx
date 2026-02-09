@@ -1,9 +1,9 @@
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Input } from '@/components/common/Input';
-import { Button } from '@/components/common/Button';
-import { useAuth } from '@/hooks/useAuth';
+import { Input } from '../../components/common/Input';
+import { Button } from '../../components/common/Button';
+import { useAuth } from '../../hooks/useAuth';
 import { Link } from 'react-router-dom';
 
 const loginSchema = z.object({

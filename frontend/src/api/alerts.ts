@@ -1,5 +1,5 @@
 import apiClient from './client';
-import type { Alert } from '@/types';
+import type { Alert } from './types';
 
 export interface CreateAlertData {
   dashboard_id: string;

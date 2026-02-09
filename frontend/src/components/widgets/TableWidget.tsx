@@ -1,7 +1,7 @@
-import { type Widget } from '@/types';
+import { type Widget } from '../../types';
 import { useQuery } from '@tanstack/react-query';
-import { widgetApi } from '@/api/widgets';
-import { Loader } from '@/components/common/Loader';
+import { widgetApi } from '../../api/widgets';
+import { Loader } from '../common/Loader';
 import { DataGrid, type GridColDef } from '@mui/x-data-grid';
 
 interface TableWidgetProps {

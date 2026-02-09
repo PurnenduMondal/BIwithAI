@@ -2,9 +2,9 @@ import { useState } from 'react';
 import GridLayout, { type Layout } from 'react-grid-layout';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
-import { type Widget } from '@/types';
-import { WidgetContainer } from '@/components/widgets/WidgetContainer';
-import { useUpdateDashboard } from '@/hooks/useDashboard';
+import { type Widget } from './types';
+import { WidgetContainer } from '../widgets/WidgetContainer';
+import { useUpdateDashboard } from '../../hooks/useDashboard';
 
 interface DashboardGridProps {
   dashboardId: string;

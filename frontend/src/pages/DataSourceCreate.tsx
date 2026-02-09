@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button } from '@/components/common/Button';
-import { Input } from '@/components/common/Input';
-import { useUploadCSV, useCreateDataSource } from '@/hooks/useDataSource';
+import { Button } from '../components/common/Button';
+import { Input } from '../components/common/Input';
+import { useUploadCSV, useCreateDataSource } from '../hooks/useDataSource';
 import { useDropzone } from 'react-dropzone';
 import { CloudArrowUpIcon } from '@heroicons/react/24/outline';
 

@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { Modal } from '@/components/common/Modal';
-import { Button } from '@/components/common/Button';
-import { useDataSources } from '@/hooks/useDataSource';
-import type { CreateWidgetData } from '@/api/widgets';
+import { Modal } from '../common/Modal';
+import { Button } from '../common/Button';
+import { useDataSources } from '../../hooks/useDataSource';
+import type { CreateWidgetData } from '../../api/widgets';
 
 interface CreateWidgetModalProps {
   isOpen: boolean;

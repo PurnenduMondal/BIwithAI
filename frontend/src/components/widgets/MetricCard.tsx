@@ -1,7 +1,7 @@
-import { type Widget } from '@/types';
+import { type Widget } from '../../types';
 import { useQuery } from '@tanstack/react-query';
-import { widgetApi } from '@/api/widgets';
-import { Loader } from '@/components/common/Loader';
+import { widgetApi } from '../../api/widgets';
+import { Loader } from '../common/Loader';
 import { ArrowUpIcon, ArrowDownIcon } from '@heroicons/react/24/solid';
 
 interface MetricCardProps {

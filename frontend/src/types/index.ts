@@ -84,3 +84,6 @@ export interface Alert {
   created_at: string;
   updated_at: string;
 }
+
+// Component Props
+export * from './dashboard';

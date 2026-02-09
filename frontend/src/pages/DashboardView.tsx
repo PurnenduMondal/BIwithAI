@@ -1,14 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { useDashboard } from '@/hooks/useDashboard';
-import { useCreateWidget } from '@/hooks/useWidget';
-import { PageLoader } from '@/components/common/Loader';
-import { DashboardHeader } from '@/components/dashboard/DashboardHeader';
-import { DashboardGrid } from '@/components/dashboard/DashboardGrid';
-import { CreateWidgetModal } from '@/components/widgets/CreateWidgetModal';
-import { useWebSocket } from '@/hooks/useWebSocket';
+import { useDashboard } from '../hooks/useDashboard';
+import { useCreateWidget } from '../hooks/useWidget';
+import { PageLoader } from '../components/common/Loader';
+import { DashboardHeader } from '../components/dashboard/DashboardHeader';
+import { DashboardGrid } from '../components/dashboard/DashboardGrid';
+import { CreateWidgetModal } from '../components/widgets/CreateWidgetModal';
+import { useWebSocket } from '../hooks/useWebSocket';
 import toast from 'react-hot-toast';
-import type { CreateWidgetData } from '@/api/widgets';
+import type { CreateWidgetData } from '../api/widgets';
 
 export const DashboardView = () => {
   const { id } = useParams<{ id: string }>();
@@ -16,27 +16,27 @@ export const DashboardView = () => {
   const createWidget = useCreateWidget(id!);
   const [isEditing, setIsEditing] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const { lastMessage, subscribe, unsubscribe } = useWebSocket();
+  // const { lastMessage, subscribe, unsubscribe } = useWebSocket();
 
   // Subscribe to dashboard updates via WebSocket
-  useEffect(() => {
-    if (id) {
-      subscribe('dashboard', id);
-      return () => unsubscribe('dashboard', id);
-    }
-  }, [id, subscribe, unsubscribe]);
+  // useEffect(() => {
+  //   if (id) {
+  //     subscribe('dashboard', id);
+  //     return () => unsubscribe('dashboard', id);
+  //   }
+  // }, [id, subscribe, unsubscribe]);
 
   // Handle WebSocket messages
-  useEffect(() => {
-    if (lastMessage) {
-      if (lastMessage.type === 'dashboard_updated') {
-        toast.success('Dashboard updated in real-time!');
-        // Optionally refetch data
-      } else if (lastMessage.type === 'datasource_updated') {
-        toast.success('Data source updated!');
-      }
-    }
-  }, [lastMessage]);
+  // useEffect(() => {
+  //   if (lastMessage) {
+  //     if (lastMessage.type === 'dashboard_updated') {
+  //       toast.success('Dashboard updated in real-time!');
+  //       // Optionally refetch data
+  //     } else if (lastMessage.type === 'datasource_updated') {
+  //       toast.success('Data source updated!');
+  //     }
+  //   }
+  // }, [lastMessage]);
 
   const handleCreateWidget = (widgetData: CreateWidgetData) => {
     createWidget.mutate(widgetData);

@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useDashboards } from '@/hooks/useDashboard';
-import { Button } from '@/components/common/Button';
-import { Loader, PageLoader } from '@/components/common/Loader';
-import { Modal } from '@/components/common/Modal';
-import { useDataSources } from '@/hooks/useDataSource';
-import { useGenerateDashboard } from '@/hooks/useDashboard';
+import { useDashboards } from '../hooks/useDashboard';
+import { Button } from '../components/common/Button';
+import { Loader, PageLoader } from '../components/common/Loader';
+import { Modal } from '../components/common/Modal';
+import { useDataSources } from '../hooks/useDataSource';
+import { useGenerateDashboard } from '../hooks/useDashboard';
 import {
   PlusIcon,
   ChartBarIcon,

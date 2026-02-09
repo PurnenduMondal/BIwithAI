@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useDataSources, useSyncDataSource, useDeleteDataSource } from '@/hooks/useDataSource';
-import { Button } from '@/components/common/Button';
-import { PageLoader } from '@/components/common/Loader';
-import { Modal } from '@/components/common/Modal';
+import { useDataSources, useSyncDataSource, useDeleteDataSource } from '../hooks/useDataSource';
+import { Button } from '../components/common/Button';
+import { PageLoader } from '../components/common/Loader';
+import { Modal } from '../components/common/Modal';
 import {
   PlusIcon,
   ArrowPathIcon,

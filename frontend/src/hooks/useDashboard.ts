@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { dashboardApi, type CreateDashboardData, type GenerateDashboardData } from '@/api/dashboards';
+import { dashboardApi, type CreateDashboardData, type GenerateDashboardData } from '../api/dashboards';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 

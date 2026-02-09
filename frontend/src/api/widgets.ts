@@ -1,5 +1,5 @@
 import apiClient from './client';
-import type { Widget } from '@/types';
+import type { Widget } from './types';
 
 export interface CreateWidgetData {
   widget_type: 'chart' | 'metric' | 'table' | 'text' | 'ai_insight';

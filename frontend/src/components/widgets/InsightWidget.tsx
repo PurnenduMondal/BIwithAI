@@ -1,7 +1,7 @@
-import { type Widget } from '@/types';
+import { type Widget } from '../../types';
 import { useQuery } from '@tanstack/react-query';
-import { insightApi } from '@/api/insights';
-import { Loader } from '@/components/common/Loader';
+import { insightApi } from '../../api/insights';
+import { Loader } from '../common/Loader';
 import { LightBulbIcon } from '@heroicons/react/24/solid';
 
 interface InsightWidgetProps {

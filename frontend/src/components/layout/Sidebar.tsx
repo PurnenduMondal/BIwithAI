@@ -7,15 +7,16 @@ import {
   Cog6ToothIcon,
 } from '@heroicons/react/24/outline';
 
-const navigation = [
-  { name: 'Home', href: '/', icon: HomeIcon },
-  { name: 'Dashboards', href: '/dashboards', icon: ChartBarIcon },
-  { name: 'Data Sources', href: '/data-sources', icon: CircleStackIcon },
-  { name: 'Alerts', href: '/alerts', icon: BellAlertIcon },
-  { name: 'Settings', href: '/settings', icon: Cog6ToothIcon },
-];
-
 export const Sidebar = () => {
+  
+  const navigation = [
+    { name: 'Home', href: '/', icon: HomeIcon },
+    { name: 'Dashboards', href: '/dashboards', icon: ChartBarIcon },
+    { name: 'Data Sources', href: '/data-sources', icon: CircleStackIcon },
+    { name: 'Alerts', href: '/alerts', icon: BellAlertIcon },
+    { name: 'Settings', href: '/settings', icon: Cog6ToothIcon },
+  ];
+
   return (
     <aside className="w-64 bg-gray-900 text-white">
       <div className="flex items-center justify-center h-16 border-b border-gray-800">
