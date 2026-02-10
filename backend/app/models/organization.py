@@ -17,6 +17,8 @@ class Organization(BaseModel):
     members = relationship("OrganizationMember", back_populates="organization", cascade="all, delete-orphan")
     dashboards = relationship("Dashboard", back_populates="organization", cascade="all, delete-orphan")
     data_sources = relationship("DataSource", back_populates="organization", cascade="all, delete-orphan")
+    chat_sessions = relationship("ChatSession", back_populates="organization", cascade="all, delete-orphan")
+    dashboard_templates = relationship("DashboardTemplate", back_populates="organization", cascade="all, delete-orphan")
 
 class OrganizationMember(BaseModel):
     __tablename__ = "organization_members"

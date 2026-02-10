@@ -92,6 +92,7 @@ class DataSource(BaseModel):
     creator = relationship("User", back_populates="data_sources")
     datasets = relationship("Dataset", back_populates="data_source", cascade="all, delete-orphan")
     widgets = relationship("Widget", back_populates="data_source")
+    chat_sessions = relationship("ChatSession", back_populates="data_source")
 
 class Dataset(BaseModel):
     __tablename__ = "datasets"

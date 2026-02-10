@@ -41,6 +41,7 @@ class User(BaseModel):
     dashboards = relationship("Dashboard", back_populates="creator", cascade="all, delete-orphan")
     data_sources = relationship("DataSource", back_populates="creator", cascade="all, delete-orphan")
     organization_memberships = relationship("OrganizationMember", back_populates="user")
+    chat_sessions = relationship("ChatSession", back_populates="user", cascade="all, delete-orphan")
     
     def __repr__(self):
         return f"<User {self.email}>"

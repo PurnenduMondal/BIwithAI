@@ -12,6 +12,7 @@ from app.models.widget import Widget
 from app.models.insight import Insight
 from app.models.alert import Alert
 from app.models.audit_log import AuditLog
+from app.models.chat import ChatSession, ChatMessage, DashboardGeneration, DashboardTemplate
 
 # Export all models
 __all__ = [
@@ -29,4 +30,8 @@ __all__ = [
     'Insight',
     'Alert',
     'AuditLog',
+    'ChatSession',
+    'ChatMessage',
+    'DashboardGeneration',
+    'DashboardTemplate',
 ]

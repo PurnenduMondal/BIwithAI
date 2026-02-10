@@ -14,6 +14,7 @@ from app.api.v1.endpoints import (
     admin,
     debug
 )
+from app.api.v1 import chat
 
 api_router = APIRouter()
 
@@ -29,3 +30,4 @@ api_router.include_router(exports.router, prefix="/exports", tags=["Exports"])
 api_router.include_router(alerts.router, prefix="/alerts", tags=["Alerts"])
 api_router.include_router(admin.router, prefix="/admin", tags=["Admin"])
 api_router.include_router(debug.router, prefix="/debug", tags=["Debug"])
+api_router.include_router(chat.router, tags=["AI Chat"])  # Chat router already includes /chat prefix
