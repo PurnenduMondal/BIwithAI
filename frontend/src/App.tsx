@@ -14,7 +14,6 @@ import { DataSourceList } from './pages/DataSourceList';
 import { DataSourceCreate } from './pages/DataSourceCreate';
 import { DataSourceView } from './pages/DataSourceView';
 import { NotificationProvider } from './contexts/NotificationContext';
-import { ExportProvider } from './contexts/ExportContext';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -31,9 +30,8 @@ function App() {
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <NotificationProvider>
-          <ExportProvider>
-            <BrowserRouter>
-          <Routes>         
+          <BrowserRouter>
+            <Routes>         
             {/* Public Routes */}
             <Route path="/login" element={<LoginForm />} />
             <Route path="/register" element={<RegisterForm />} />
@@ -63,21 +61,20 @@ function App() {
             {/* 404 */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
-          </BrowserRouter>
+        </BrowserRouter>
 
-          <Toaster
-            position="top-right"
-            toastOptions={{
-              duration: 3000,
-              style: {
-                background: '#fff',
-                color: '#333',
-                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-              },
-            }}
-          />
-          </ExportProvider>
-        </NotificationProvider>
+        <Toaster
+          position="top-right"
+          toastOptions={{
+            duration: 3000,
+            style: {
+              background: '#fff',
+              color: '#333',
+              boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+            },
+          }}
+        />
+      </NotificationProvider>
       </QueryClientProvider>
     </ErrorBoundary>
   );

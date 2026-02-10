@@ -1,8 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { useNotifications } from '../../contexts/NotificationContext';
-import { useExports } from '../../contexts/ExportContext';
-import { ExportQueueModal } from '../exports/ExportQueueModal';
 import { apiClient } from '../../api/client';
 import toast from 'react-hot-toast';
 import {
@@ -10,7 +8,6 @@ import {
   UserCircleIcon,
   Cog6ToothIcon,
   ArrowRightOnRectangleIcon,
-  CheckIcon,
   XMarkIcon,
   ArrowDownTrayIcon,
 } from '@heroicons/react/24/outline';
@@ -19,10 +16,8 @@ import { formatDistanceToNow } from 'date-fns';
 export const Header = () => {
   const { user, logout } = useAuth();
   const { notifications, unreadCount, markAsRead, markAllAsRead, removeNotification } = useNotifications();
-  const { activeCount } = useExports();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
-  const [isExportQueueOpen, setIsExportQueueOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const notificationRef = useRef<HTMLDivElement>(null);
 
@@ -70,20 +65,6 @@ export const Header = () => {
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Export Queue */}
-          <button 
-            onClick={() => setIsExportQueueOpen(true)}
-            className="p-1.5 text-gray-600 hover:text-gray-900 rounded-lg hover:bg-gray-100 relative"
-            title="Export Queue"
-          >
-            <ArrowDownTrayIcon className="w-5 h-5" />
-            {activeCount > 0 && (
-              <span className="absolute top-0.5 right-0.5 flex items-center justify-center w-4 h-4 text-xs font-bold text-white bg-blue-500 rounded-full">
-                {activeCount}
-              </span>
-            )}
-          </button>
-
           {/* Notifications */}
           <div className="relative" ref={notificationRef}>
             <button 
@@ -219,12 +200,6 @@ export const Header = () => {
           </div>
         </div>
       </div>
-
-      {/* Export Queue Modal */}
-      <ExportQueueModal
-        isOpen={isExportQueueOpen}
-        onClose={() => setIsExportQueueOpen(false)}
-      />
     </header>
   );
 };

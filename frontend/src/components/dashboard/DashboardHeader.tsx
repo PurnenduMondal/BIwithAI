@@ -1,13 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { type DashboardHeaderProps } from '../../types';
 import { Button } from '../common/Button';
 import { Modal } from '../common/Modal';
 import { useDeleteDashboard, useDuplicateDashboard, useUpdateDashboard } from '../../hooks/useDashboard';
 import { dashboardApi } from '../../api/dashboards';
-import { exportApi, type ExportFormat } from '../../api/exports';
-import { useWebSocket } from '../../hooks/useWebSocket';
-import { useNotifications } from '../../contexts/NotificationContext';
-import { useExports } from '../../contexts/ExportContext';
+import { type ExportFormat } from '../../api/exports';
 import { exportDashboardScreenshot, downloadBlob } from '../../utils/exportUtils';
 import toast from 'react-hot-toast';
 import {
@@ -30,69 +27,10 @@ export const DashboardHeader = ({ dashboard, onEdit, isEditing, onAddWidget, onS
   const [editedDescription, setEditedDescription] = useState(dashboard.description || '');
   const [selectedExportFormat, setSelectedExportFormat] = useState<ExportFormat>('pdf');
   const [isSharing, setIsSharing] = useState(false);
-  const [currentExportJobId, setCurrentExportJobId] = useState<string | null>(null);
   
   const deleteDashboard = useDeleteDashboard();
   const duplicateDashboard = useDuplicateDashboard();
   const updateDashboard = useUpdateDashboard(dashboard.id);
-  const { lastMessage, subscribe, unsubscribe } = useWebSocket();
-  const { addNotification } = useNotifications();
-  const { addExport, updateExport } = useExports();
-
-  // Listen for export updates via websocket
-  useEffect(() => {
-    if (!lastMessage || !currentExportJobId) return;
-
-    console.log('Received websocket message:', lastMessage);
-
-    if (lastMessage.type === 'export_progress') {
-      const { job_id, progress, message } = lastMessage;
-      
-      console.log('Export progress:', { job_id, progress, message, currentExportJobId });
-      
-      if (job_id === currentExportJobId) {
-        updateExport(job_id, {
-          progress: progress || 0,
-          message: message || '',
-          status: 'processing',
-        });
-      }
-    } else if (lastMessage.type === 'export_completed') {
-      const { job_id, download_url, format } = lastMessage;
-      
-      if (job_id === currentExportJobId) {
-        updateExport(job_id, {
-          status: 'completed',
-          progress: 100,
-          downloadUrl: download_url,
-          message: 'Export completed',
-        });
-        
-        addNotification({
-          type: 'export',
-          title: 'Export Complete',
-          message: `Dashboard exported as ${format.toUpperCase()}`,
-          downloadUrl: download_url,
-        });
-        
-        toast.success('Export completed! Check export queue.');
-        setCurrentExportJobId(null);
-      }
-    } else if (lastMessage.type === 'export_failed') {
-      const { job_id, error } = lastMessage;
-      
-      if (job_id === currentExportJobId) {
-        updateExport(job_id, {
-          status: 'failed',
-          error: error || 'Export failed',
-          message: 'Export failed',
-        });
-        
-        toast.error(error || 'Export failed');
-        setCurrentExportJobId(null);
-      }
-    }
-  }, [lastMessage, currentExportJobId, addNotification, updateExport]);
 
   const handleShare = async () => {
     setIsSharing(true);
@@ -132,15 +70,6 @@ export const DashboardHeader = ({ dashboard, onEdit, isEditing, onAddWidget, onS
       toast.error(error.message || 'Failed to export dashboard', { id: 'export-loading' });
     }
   };
-
-  // Cleanup websocket subscription
-  useEffect(() => {
-    return () => {
-      if (currentExportJobId) {
-        unsubscribe('export_job', currentExportJobId);
-      }
-    };
-  }, [currentExportJobId, unsubscribe]);
 
   const handleDelete = () => {
     deleteDashboard.mutate(dashboard.id);

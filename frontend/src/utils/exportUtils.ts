@@ -20,7 +20,7 @@ declare global {
 export const exportDashboardScreenshot = async (
   options: ExportOptions
 ): Promise<Blob> => {
-  const { filename, format } = options;
+  const { format } = options;
 
   // Find the main dashboard container
   const dashboardContainer = document.querySelector('[data-dashboard-container]') as HTMLElement;
