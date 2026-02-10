@@ -5,4 +5,5 @@ export interface DashboardHeaderProps {
   onEdit: () => void;
   isEditing: boolean;
   onAddWidget?: () => void;
+  onSave?: () => void;
 }

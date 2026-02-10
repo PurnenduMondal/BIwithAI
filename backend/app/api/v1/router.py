@@ -10,6 +10,7 @@ from app.api.v1.endpoints import (
     insights,
     analytics,
     exports,
+    downloads,
     alerts,
     admin,
     debug
@@ -27,6 +28,7 @@ api_router.include_router(widgets.router, prefix="/widgets", tags=["Widgets"])
 api_router.include_router(insights.router, prefix="/insights", tags=["Insights"])
 api_router.include_router(analytics.router, prefix="/analytics", tags=["Analytics"])
 api_router.include_router(exports.router, prefix="/exports", tags=["Exports"])
+api_router.include_router(downloads.router, prefix="/downloads", tags=["Downloads"])
 api_router.include_router(alerts.router, prefix="/alerts", tags=["Alerts"])
 api_router.include_router(admin.router, prefix="/admin", tags=["Admin"])
 api_router.include_router(debug.router, prefix="/debug", tags=["Debug"])

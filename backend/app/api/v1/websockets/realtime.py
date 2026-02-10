@@ -5,13 +5,10 @@ import logging
 from uuid import UUID
 
 from app.core.security import decode_token
-from app.services.websocket.connection_manager import ConnectionManager
+from app.services.websocket.connection_manager import connection_manager
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
-# Connection manager instance
-manager = ConnectionManager()
 
 @router.websocket("/ws/realtime")
 async def websocket_endpoint(
@@ -35,11 +32,11 @@ async def websocket_endpoint(
         return
     
     # Accept connection
-    await manager.connect(websocket, user_id)
+    await connection_manager.connect(websocket, user_id)
     
     try:
         # Send welcome message
-        await manager.send_personal_message(
+        await connection_manager.send_personal_message(
             {
                 "type": "connection_established",
                 "message": "Connected to real-time updates",
@@ -60,9 +57,9 @@ async def websocket_endpoint(
                 resource_type = message.get("resource_type")  # dashboard, widget, datasource
                 resource_id = message.get("resource_id")
                 
-                await manager.subscribe(user_id, resource_type, resource_id)
+                await connection_manager.subscribe(user_id, resource_type, resource_id)
                 
-                await manager.send_personal_message(
+                await connection_manager.send_personal_message(
                     {
                         "type": "subscribed",
                         "resource_type": resource_type,
@@ -75,9 +72,9 @@ async def websocket_endpoint(
                 resource_type = message.get("resource_type")
                 resource_id = message.get("resource_id")
                 
-                await manager.unsubscribe(user_id, resource_type, resource_id)
+                await connection_manager.unsubscribe(user_id, resource_type, resource_id)
                 
-                await manager.send_personal_message(
+                await connection_manager.send_personal_message(
                     {
                         "type": "unsubscribed",
                         "resource_type": resource_type,
@@ -87,7 +84,7 @@ async def websocket_endpoint(
                 )
             
             elif message_type == "ping":
-                await manager.send_personal_message(
+                await connection_manager.send_personal_message(
                     {"type": "pong", "timestamp": message.get("timestamp")},
                     websocket
                 )
@@ -96,7 +93,7 @@ async def websocket_endpoint(
                 logger.warning(f"Unknown message type: {message_type}")
     
     except WebSocketDisconnect:
-        manager.disconnect(user_id)
+        connection_manager.disconnect(user_id)
         logger.info(f"User {user_id} disconnected from WebSocket")
     
     except Exception as e:

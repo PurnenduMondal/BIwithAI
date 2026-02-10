@@ -73,6 +73,8 @@ class ChatMessageResponse(BaseModel):
     token_count: int
     processing_time_ms: Optional[int]
     created_at: datetime
+    widget_previews: Optional[List[Dict[str, Any]]] = None  # Widgets with preview data
+    dashboard_id: Optional[UUID4] = None  # Dashboard ID if created
     
     class Config:
         from_attributes = True

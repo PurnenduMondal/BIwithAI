@@ -1,5 +1,5 @@
 import apiClient from './client';
-import type { Dashboard } from './types';
+import type { Dashboard } from '../types';
 
 export interface CreateDashboardData {
   name: string;

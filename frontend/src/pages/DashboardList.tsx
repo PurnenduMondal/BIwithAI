@@ -1,11 +1,13 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useDashboards } from '../hooks/useDashboard';
 import { Button } from '../components/common/Button';
 import { Loader, PageLoader } from '../components/common/Loader';
 import { Modal } from '../components/common/Modal';
 import { useDataSources } from '../hooks/useDataSource';
-import { useGenerateDashboard } from '../hooks/useDashboard';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { chatApi } from '../api/chat';
+import toast from 'react-hot-toast';
 import {
   PlusIcon,
   ChartBarIcon,
@@ -16,19 +18,38 @@ import { format } from 'date-fns';
 export const DashboardList = () => {
   const { data: dashboards, isLoading } = useDashboards();
   const { data: dataSources } = useDataSources();
-  const generateDashboard = useGenerateDashboard();
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
   
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedDataSource, setSelectedDataSource] = useState('');
+  const [nlpQuery, setNlpQuery] = useState('');
+
+  const generateDashboard = useMutation({
+    mutationFn: chatApi.generateDashboard,
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['dashboards'] });
+      toast.success('Dashboard generated successfully!');
+      navigate(`/dashboards/${data.dashboard_id}`);
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.detail || 'Failed to generate dashboard');
+    },
+  });
 
   const handleGenerateDashboard = () => {
-    if (!selectedDataSource) return;
+    if (!selectedDataSource || !nlpQuery.trim()) return;
     
     generateDashboard.mutate({
+      query: nlpQuery,
       data_source_id: selectedDataSource,
-      preferences: {},
+    }, {
+      onSuccess: () => {
+        setShowCreateModal(false);
+        setSelectedDataSource('');
+        setNlpQuery('');
+      }
     });
-    setShowCreateModal(false);
   };
 
   if (isLoading) {
@@ -138,7 +159,7 @@ export const DashboardList = () => {
             </Button>
             <Button
               onClick={handleGenerateDashboard}
-              disabled={!selectedDataSource}
+              disabled={!selectedDataSource || !nlpQuery.trim()}
               isLoading={generateDashboard.isPending}
             >
               Generate Dashboard
@@ -148,8 +169,21 @@ export const DashboardList = () => {
       >
         <div className="space-y-4">
           <p className="text-gray-600">
-            Select a data source to automatically generate a dashboard with relevant widgets and insights.
+            Describe what kind of dashboard you want to create, and AI will generate it with relevant widgets and insights.
           </p>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              What would you like to visualize?
+            </label>
+            <textarea
+              value={nlpQuery}
+              onChange={(e) => setNlpQuery(e.target.value)}
+              placeholder="e.g., Show me top 5 products by sales, Create a revenue trend analysis dashboard, Display customer demographics..."
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              rows={3}
+            />
+          </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">

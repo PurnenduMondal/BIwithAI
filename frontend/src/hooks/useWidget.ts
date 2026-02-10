@@ -44,9 +44,15 @@ export const useUpdateWidget = (id: string) => {
     mutationFn: (widgetData: Partial<CreateWidgetData>) =>
       widgetApi.update(id, widgetData),
     onSuccess: (data) => {
+      // Invalidate and refetch widget data
       queryClient.invalidateQueries({ queryKey: ['widget', id] });
+      queryClient.invalidateQueries({ queryKey: ['widgetData', id] });
       queryClient.invalidateQueries({ queryKey: ['dashboard', data.dashboard_id] });
       queryClient.invalidateQueries({ queryKey: ['widgets', data.dashboard_id] });
+      
+      // Force refetch widget data
+      queryClient.refetchQueries({ queryKey: ['widgetData', id] });
+      
       toast.success('Widget updated successfully!');
     },
     onError: (error: any) => {

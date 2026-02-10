@@ -27,6 +27,7 @@ export const useWebSocket = (url?: string) => {
     ws.onmessage = (event) => {
       try {
         const message = JSON.parse(event.data);
+        console.log('WebSocket message received:', message);
         setLastMessage(message);
       } catch (error) {
         console.error('Error parsing WebSocket message:', error);
@@ -57,11 +58,15 @@ export const useWebSocket = (url?: string) => {
 
   const subscribe = useCallback((resourceType: string, resourceId: string) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({
+      const message = {
         type: 'subscribe',
         resource_type: resourceType,
         resource_id: resourceId,
-      }));
+      };
+      console.log('Sending subscription message:', message);
+      wsRef.current.send(JSON.stringify(message));
+    } else {
+      console.error('WebSocket not open, state:', wsRef.current?.readyState);
     }
   }, []);
 

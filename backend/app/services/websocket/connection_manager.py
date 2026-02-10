@@ -60,6 +60,7 @@ class ConnectionManager:
             self.resource_subscribers[resource_key] = {user_id}
         
         logger.info(f"User {user_id} subscribed to {resource_key}")
+        logger.info(f"Total resource_subscribers: {self.resource_subscribers}")
     
     async def unsubscribe(self, user_id: str, resource_type: str, resource_id: str):
         """Unsubscribe user from resource updates"""
@@ -86,10 +87,16 @@ class ConnectionManager:
         """Broadcast message to all subscribers of a resource"""
         resource_key = f"{resource_type}:{resource_id}"
         
+        logger.info(f"Broadcasting to {resource_key}")
+        logger.info(f"Subscribed resources: {list(self.resource_subscribers.keys())}")
+        logger.info(f"Active connections: {list(self.active_connections.keys())}")
+        
         if resource_key not in self.resource_subscribers:
+            logger.warning(f"No subscribers for {resource_key}")
             return
         
         subscribers = self.resource_subscribers[resource_key].copy()
+        logger.info(f"Found {len(subscribers)} subscribers for {resource_key}: {subscribers}")
         
         # Send to all subscribers
         disconnected = []

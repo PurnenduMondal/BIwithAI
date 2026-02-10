@@ -43,6 +43,8 @@ export interface Dashboard {
   theme: Record<string, any>;
   is_template: boolean;
   is_public: boolean;
+  generated_by_ai?: boolean;
+  generation_context?: Record<string, any>;
   created_at: string;
   updated_at: string;
   widgets?: Widget[];
@@ -51,17 +53,24 @@ export interface Dashboard {
 export interface Widget {
   id: string;
   dashboard_id: string;
-  widget_type: 'chart' | 'metric' | 'table' | 'text' | 'ai_insight';
+  widget_type: 'line' | 'bar' | 'pie' | 'area' | 'scatter' | 'heatmap' | 'metric' | 'table' | 'gauge';
   title: string;
+  description?: string | null;
   position: {
     x: number;
     y: number;
     w: number;
     h: number;
   };
-  config: Record<string, any>;
+  query_config: Record<string, any>; // Data query configuration
+  chart_config: Record<string, any>; // Visual chart configuration
+  data_mapping?: Record<string, any>; // Column mappings
   data_source_id: string | null;
+  generated_by_ai?: boolean;
+  generation_prompt?: string | null;
+  ai_reasoning?: string | null;
   created_at: string;
+  updated_at?: string;
 }
 
 export interface Insight {

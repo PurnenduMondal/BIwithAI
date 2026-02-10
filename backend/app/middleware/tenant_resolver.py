@@ -34,8 +34,5 @@ class TenantResolverMiddleware(BaseHTTPMiddleware):
         # Store subdomain in request state for access by dependencies
         request.state.subdomain = subdomain
         
-        if subdomain:
-            logger.debug(f"Resolved tenant subdomain: {subdomain}")
-        
         response = await call_next(request)
         return response

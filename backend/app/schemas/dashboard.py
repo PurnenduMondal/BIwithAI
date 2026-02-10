@@ -2,38 +2,7 @@ from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from uuid import UUID
-
-class WidgetPosition(BaseModel):
-    x: int = Field(..., ge=0)
-    y: int = Field(..., ge=0)
-    w: int = Field(..., ge=1, le=12)
-    h: int = Field(..., ge=1)
-
-class WidgetConfig(BaseModel):
-    metric: Optional[str] = None
-    aggregation: Optional[str] = None
-    x_axis: Optional[str] = None
-    y_axis: Optional[str] = None
-    chart_type: Optional[str] = None
-    filters: Optional[List[Dict[str, Any]]] = []
-
-class WidgetBase(BaseModel):
-    widget_type: str
-    title: str
-    position: WidgetPosition
-    config: WidgetConfig
-    data_source_id: Optional[UUID] = None
-
-class WidgetCreate(WidgetBase):
-    pass
-
-class WidgetResponse(WidgetBase):
-    id: UUID
-    dashboard_id: UUID
-    created_at: datetime
-    
-    class Config:
-        from_attributes = True
+from .widget import WidgetResponse
 
 class DashboardBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
@@ -63,8 +32,7 @@ class DashboardResponse(DashboardBase):
     created_at: datetime
     updated_at: datetime
     
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 class DashboardWithWidgets(DashboardResponse):
     widgets: List[WidgetResponse]

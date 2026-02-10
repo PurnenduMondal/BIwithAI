@@ -18,27 +18,16 @@ export const PieChart = ({ data, config }: PieChartProps) => {
   const xAxis = config?.x_axis || 'name';
   const yAxis = config?.y_axis || 'value';
 
-  // Transform data to handle string values (like "25.50%")
   const transformedData = data.map(item => {
     const value = item[yAxis];
-    let numericValue = value;
-    let displayValue = value;
-
-    // If value is a string, try to parse it
-    if (typeof value === 'string') {
-      // Remove % sign and parse
-      const cleaned = value.replace('%', '').trim();
-      const parsed = parseFloat(cleaned);
-      if (!isNaN(parsed)) {
-        numericValue = parsed;
-        displayValue = value; // Keep original formatted string
-      }
-    }
-
+    // if the aggregation is percentage, ensure the value is formatted as a string with % symbol
+    const displayValue =
+      config?.aggregation === 'percentage' && typeof value === 'number'
+        ? `${value.toFixed(2)}%`
+        : value;
     return {
       ...item,
-      [yAxis]: numericValue,
-      [`${yAxis}_display`]: displayValue,
+      [`${yAxis}_display`]: displayValue, // Add a new field for display value
     };
   });
 

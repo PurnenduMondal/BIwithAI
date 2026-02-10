@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { useDashboard } from '../hooks/useDashboard';
 import { PageLoader } from '../components/common/Loader';
@@ -14,6 +14,15 @@ export const DashboardView = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [selectedWidget, setSelectedWidget] = useState<Widget | null | undefined>(undefined);
   const { lastMessage, subscribe, unsubscribe } = useWebSocket();
+  const saveDashboardRef = useRef<() => Promise<void>>();
+
+  const handleSave = async () => {
+    if ((window as any).__saveDashboardChanges) {
+      await (window as any).__saveDashboardChanges();
+      toast.success('Dashboard changes saved!');
+      setIsEditing(false);
+    }
+  };
 
   // Subscribe to dashboard updates via WebSocket
   useEffect(() => {
@@ -51,20 +60,22 @@ export const DashboardView = () => {
   }
 
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col h-screen" data-dashboard-container>
       <DashboardHeader
         dashboard={dashboard}
         onEdit={() => setIsEditing(!isEditing)}
         isEditing={isEditing}
         onAddWidget={() => setSelectedWidget(null)}
+        onSave={handleSave}
       />
 
-      <div className="flex-1 overflow-auto p-6">
+      <div className="flex-1 overflow-auto p-6" data-dashboard-grid-container>
         <DashboardGrid
           dashboardId={dashboard.id}
           isEditing={isEditing}
           selectedWidget={selectedWidget}
           onSelectWidget={setSelectedWidget}
+          onSave={handleSave}
         />
       </div>
     </div>

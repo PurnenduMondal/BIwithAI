@@ -1,4 +1,5 @@
 import pandas as pd
+import json
 from typing import Dict, Any, List, Optional
 import logging
 
@@ -35,10 +36,14 @@ class QueryExecutor:
             if 'filters' in config and config['filters']:
                 result_df = self._apply_filters(result_df, config['filters'])
             
+            # Define chart types
+            chart_types = ['line', 'bar', 'pie', 'area', 'scatter', 'heatmap', 'chart']
+            metric_types = ['metric', 'gauge']
+            
             # Handle different widget types
-            if widget_type == 'chart':
-                return self._execute_chart_query(result_df, config)
-            elif widget_type == 'metric':
+            if widget_type in chart_types:
+                return self._execute_chart_query(result_df, config, widget_type)
+            elif widget_type in metric_types:
                 return self._execute_metric_query(result_df, config)
             elif widget_type == 'table':
                 return self._execute_table_query(result_df, config)
@@ -63,13 +68,15 @@ class QueryExecutor:
     def _execute_chart_query(
         self,
         df: pd.DataFrame,
-        config: Dict[str, Any]
+        config: Dict[str, Any],
+        widget_type: str = 'bar'
     ) -> Dict[str, Any]:
         """Execute query for chart widgets"""
         x_axis = config.get('x_axis')
         y_axis = config.get('y_axis')
         aggregation = config.get('aggregation', 'sum')
-        chart_type = config.get('chart_type', 'bar')
+        # Use widget_type as chart_type (bar, line, pie, etc.)
+        chart_type = widget_type if widget_type != 'chart' else config.get('chart_type', 'bar')
         
         if not x_axis or not y_axis:
             return {
@@ -136,11 +143,8 @@ class QueryExecutor:
                     # If sorting fails (e.g., mixed types), skip sorting
                     pass
             
-            # Format percentage values as strings with % symbol (after sorting/filtering)
-            if aggregation == 'percentage':
-                result_df[y_axis] = result_df[y_axis].apply(lambda x: f"{x:.2f}%")
-            
-            data = result_df.to_dict('records')
+            # Convert to JSON-safe format using pandas to_json() to handle NaN, Inf, and -Inf
+            data = json.loads(result_df.to_json(orient='records', date_format='iso'))
             columns = result_df.columns.tolist()
             
             metadata = {
@@ -173,112 +177,46 @@ class QueryExecutor:
         """Execute query for metric widgets"""
         metric_field = config.get('metric')
         aggregation = config.get('aggregation', 'sum')
-        date_column = config.get('date_column')
-        comparison_period = config.get('comparison_period')
         
         if not metric_field:
             return {
                 'value': 0,
-                'change': 0,
                 'error': 'metric field is required for metric widgets'
             }
         
         if metric_field not in df.columns:
             return {
                 'value': 0,
-                'change': 0,
                 'error': f'Column {metric_field} not found in data'
             }
         
-        try:
-            # Helper function to calculate aggregation
-            def calculate_value(data):
-                if aggregation == 'sum':
-                    return data[metric_field].sum()
-                elif aggregation == 'avg' or aggregation == 'mean':
-                    return data[metric_field].mean()
-                elif aggregation == 'count':
-                    return data[metric_field].count()
-                elif aggregation == 'min':
-                    return data[metric_field].min()
-                elif aggregation == 'max':
-                    return data[metric_field].max()
-                else:
-                    return data[metric_field].sum()
+
+        # Helper function to calculate aggregation
+        def calculate_value(data):
+            if aggregation == 'sum':
+                return data[metric_field].sum()
+            elif aggregation == 'avg' or aggregation == 'mean':
+                return data[metric_field].mean()
+            elif aggregation == 'count':
+                return data[metric_field].count()
+            elif aggregation == 'min':
+                return data[metric_field].min()
+            elif aggregation == 'max':
+                return data[metric_field].max()
+            else:
+                return data[metric_field].sum()
+        
+        # Calculate current value
+        current_value = calculate_value(df)
+        
+        # Return simplified format for metric widgets
+        return {
+            'value': float(current_value) if pd.notna(current_value) else 0,
+            'metric': metric_field,
+            'aggregation': aggregation
+        }
             
-            # Calculate current value
-            current_value = calculate_value(df)
-            change = 0
-            
-            # Calculate change if comparison period is configured
-            if date_column and comparison_period and date_column in df.columns:
-                try:
-                    # Convert date column to datetime
-                    df_copy = df.copy()
-                    df_copy[date_column] = pd.to_datetime(df_copy[date_column])
-                    
-                    # Get max date (most recent date in dataset)
-                    max_date = df_copy[date_column].max()
-                    
-                    # Calculate period boundaries based on comparison_period
-                    if comparison_period == 'previous_week':
-                        current_start = max_date - pd.Timedelta(days=7)
-                        previous_start = max_date - pd.Timedelta(days=14)
-                        previous_end = current_start
-                    elif comparison_period == 'previous_month':
-                        current_start = max_date - pd.DateOffset(months=1)
-                        previous_start = max_date - pd.DateOffset(months=2)
-                        previous_end = current_start
-                    elif comparison_period == 'previous_quarter':
-                        current_start = max_date - pd.DateOffset(months=3)
-                        previous_start = max_date - pd.DateOffset(months=6)
-                        previous_end = current_start
-                    elif comparison_period == 'previous_year':
-                        current_start = max_date - pd.DateOffset(years=1)
-                        previous_start = max_date - pd.DateOffset(years=2)
-                        previous_end = current_start
-                    else:
-                        # Default to previous month if period not recognized
-                        current_start = max_date - pd.DateOffset(months=1)
-                        previous_start = max_date - pd.DateOffset(months=2)
-                        previous_end = current_start
-                    
-                    # Filter data for current period
-                    current_period_df = df_copy[df_copy[date_column] >= current_start]
-                    current_value = calculate_value(current_period_df)
-                    
-                    # Filter data for previous period
-                    previous_period_df = df_copy[
-                        (df_copy[date_column] >= previous_start) &
-                        (df_copy[date_column] < previous_end)
-                    ]
-                    previous_value = calculate_value(previous_period_df)
-                    
-                    # Calculate percentage change
-                    if previous_value and previous_value != 0:
-                        change = ((current_value - previous_value) / previous_value) * 100
-                    
-                    logger.info(f"Comparison: current={current_value}, previous={previous_value}, change={change}%")
-                
-                except Exception as e:
-                    logger.warning(f"Could not calculate comparison: {str(e)}")
-                    # Continue without comparison, change stays 0
-            
-            # Return simplified format for metric widgets
-            return {
-                'value': float(current_value) if pd.notna(current_value) else 0,
-                'change': float(change) if pd.notna(change) else 0,
-                'metric': metric_field,
-                'aggregation': aggregation
-            }
-            
-        except Exception as e:
-            logger.error(f"Error executing metric query: {str(e)}", exc_info=True)
-            return {
-                'value': 0,
-                'change': 0,
-                'error': str(e)
-            }
+
     
     def _execute_table_query(
         self,
@@ -299,8 +237,8 @@ class QueryExecutor:
             if available_cols:
                 result_df = result_df[available_cols]
         
-        # Convert to response format
-        data = result_df.to_dict('records')
+        # Convert to JSON-safe format using pandas to_json() to handle NaN, Inf, and -Inf
+        data = json.loads(result_df.to_json(orient='records', date_format='iso'))
         columns = result_df.columns.tolist()
         
         metadata = {

@@ -25,7 +25,7 @@ from app.workers.dashboard_generation import generate_dashboard_task
 
 router = APIRouter()
 
-@router.get("/", response_model=List[DashboardResponse])
+@router.get("/", response_model=List[DashboardWithWidgets])
 async def list_dashboards(
     skip: int = 0,
     limit: int = 100,
@@ -36,6 +36,7 @@ async def list_dashboards(
     """List all dashboards for the organization"""
     result = await db.execute(
         select(Dashboard)
+        .options(selectinload(Dashboard.widgets))
         .where(Dashboard.org_id == organization.id)
         .where(Dashboard.deleted_at.is_(None))
         .offset(skip)
@@ -43,6 +44,11 @@ async def list_dashboards(
         .order_by(Dashboard.created_at.desc())
     )
     dashboards = result.scalars().all()
+    
+    # Filter out soft-deleted widgets
+    for dashboard in dashboards:
+        if dashboard.widgets:
+            dashboard.widgets = [w for w in dashboard.widgets if w.deleted_at is None]
     
     return dashboards
 
@@ -249,8 +255,14 @@ async def duplicate_dashboard(
             data_source_id=widget.data_source_id,
             widget_type=widget.widget_type,
             title=widget.title,
-            position=widget.position.copy(),
-            config=widget.config.copy()
+            description=widget.description,
+            position=widget.position.copy() if widget.position else {},
+            query_config=(widget.query_config or {}).copy(),
+            chart_config=(widget.chart_config or {}).copy(),
+            data_mapping=(widget.data_mapping or {}).copy(),
+            generated_by_ai=widget.generated_by_ai,
+            generation_prompt=widget.generation_prompt,
+            ai_reasoning=widget.ai_reasoning
         )
         db.add(duplicate_widget)
     

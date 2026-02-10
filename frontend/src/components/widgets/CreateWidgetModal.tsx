@@ -19,10 +19,11 @@ export const CreateWidgetModal = ({
 }: CreateWidgetModalProps) => {
   const { data: dataSources } = useDataSources();
   const [formData, setFormData] = useState<Partial<CreateWidgetData>>({
-    widget_type: 'chart',
+    widget_type: 'bar',
     title: '',
     position: { x: 0, y: 0, w: 4, h: 4 },
-    config: {},
+    query_config: {},
+    chart_config: {},
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -35,10 +36,11 @@ export const CreateWidgetModal = ({
 
   const handleClose = () => {
     setFormData({
-      widget_type: 'chart',
+      widget_type: 'bar',
       title: '',
       position: { x: 0, y: 0, w: 4, h: 4 },
-      config: {},
+      query_config: {},
+      chart_config: {},
     });
     onClose();
   };
@@ -90,11 +92,15 @@ export const CreateWidgetModal = ({
             }
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-            <option value="chart">Chart</option>
+            <option value="bar">Bar Chart</option>
+            <option value="line">Line Chart</option>
+            <option value="pie">Pie Chart</option>
+            <option value="area">Area Chart</option>
+            <option value="scatter">Scatter Chart</option>
+            <option value="heatmap">Heatmap</option>
             <option value="metric">Metric</option>
             <option value="table">Table</option>
-            <option value="text">Text</option>
-            <option value="ai_insight">AI Insight</option>
+            <option value="gauge">Gauge</option>
           </select>
         </div>
 

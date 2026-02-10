@@ -6,15 +6,19 @@ import { DataGrid, type GridColDef } from '@mui/x-data-grid';
 
 interface TableWidgetProps {
   widget: Widget;
+  data?: any[]; // Optional data for preview mode (chat)
 }
 
-export const TableWidget = ({ widget }: TableWidgetProps) => {
-  const { data, isLoading } = useQuery({
+export const TableWidget = ({ widget, data: previewData }: TableWidgetProps) => {
+  const { data: fetchedData, isLoading } = useQuery({
     queryKey: ['widgetData', widget.id],
     queryFn: () => widgetApi.getData(widget.id),
+    enabled: !previewData, // Skip query if preview data provided
+    staleTime: 0, // Always consider data stale
+    refetchOnMount: true, // Refetch when component mounts
   });
 
-  if (isLoading) {
+  if (!previewData && isLoading) {
     return (
       <div className="flex items-center justify-center h-full">
         <Loader />
@@ -22,10 +26,24 @@ export const TableWidget = ({ widget }: TableWidgetProps) => {
     );
   }
 
-  const rows = data?.data || [];
-  const columns: GridColDef[] = (widget.config?.columns || []).map((col: string) => ({
+  const rows = previewData || fetchedData?.data || [];
+  const chartConfig = widget.chart_config || {};
+  
+  // Add unique id to each row for DataGrid
+  const rowsWithId = rows.map((row: any, index: number) => ({
+    id: index,
+    ...row,
+  }));
+  
+  // If columns are specified in config, use them; otherwise, auto-detect from first row
+  let columnList: string[] = chartConfig?.columns || [];
+  if (columnList.length === 0 && rows.length > 0) {
+    columnList = Object.keys(rows[0]);
+  }
+  
+  const columns: GridColDef[] = columnList.map((col: string) => ({
     field: col,
-    headerName: col,
+    headerName: col.replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').trim(),
     flex: 1,
     minWidth: 150,
   }));
@@ -33,7 +51,7 @@ export const TableWidget = ({ widget }: TableWidgetProps) => {
   return (
     <div className="h-full w-full">
       <DataGrid
-        rows={rows}
+        rows={rowsWithId}
         columns={columns}
         initialState={{
           pagination: {

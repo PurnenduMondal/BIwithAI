@@ -14,6 +14,7 @@ interface DashboardGridProps {
   isEditing?: boolean;
   selectedWidget: Widget | null | undefined;
   onSelectWidget: (widget: Widget | null | undefined) => void;
+  onSave?: () => Promise<void>;
 }
 
 interface LayoutItem {
@@ -24,10 +25,11 @@ interface LayoutItem {
   h: number;
 }
 
-export const DashboardGrid = ({ dashboardId, isEditing = false, selectedWidget, onSelectWidget }: DashboardGridProps) => {
+export const DashboardGrid = ({ dashboardId, isEditing = false, selectedWidget, onSelectWidget, onSave }: DashboardGridProps) => {
   const { data: widgets, isLoading, error } = useWidgets(dashboardId);
   const [isDragging, setIsDragging] = useState(false);
   const [layouts, setLayouts] = useState<LayoutItem[]>([]);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   
   // Track pending updates
   const pendingUpdates = useRef<Map<string, { x: number; y: number; w: number; h: number }>>(new Map());
@@ -71,14 +73,10 @@ export const DashboardGrid = ({ dashboardId, isEditing = false, selectedWidget, 
             w: item.w,
             h: item.h
           });
+          setHasUnsavedChanges(true);
         }
       }
     });
-
-    // Execute pending updates
-    if (pendingUpdates.current.size > 0) {
-      updatePendingWidgets();
-    }
   };
 
   const updatePendingWidgets = async () => {
@@ -86,6 +84,7 @@ export const DashboardGrid = ({ dashboardId, isEditing = false, selectedWidget, 
     
     const updates = Array.from(pendingUpdates.current.entries());
     pendingUpdates.current.clear();
+    setHasUnsavedChanges(false);
 
     // Update each widget individually
     for (const [widgetId, position] of updates) {
@@ -99,6 +98,18 @@ export const DashboardGrid = ({ dashboardId, isEditing = false, selectedWidget, 
       }
     }
   };
+
+  // Expose save function to parent
+  useEffect(() => {
+    if (onSave) {
+      (window as any).__saveDashboardChanges = async () => {
+        await updatePendingWidgets();
+      };
+    }
+    return () => {
+      delete (window as any).__saveDashboardChanges;
+    };
+  }, [onSave, widgets]);
 
   const handleLayoutChange = (newLayout: readonly LayoutItem[]) => {
     if (!isEditing || isDragging) return;
@@ -137,6 +148,7 @@ export const DashboardGrid = ({ dashboardId, isEditing = false, selectedWidget, 
           dashboardId={dashboardId}
           isOpen={selectedWidget !== undefined}
           onClose={() => onSelectWidget(undefined)}
+          onSave={onSave}
         />
       </>
     );

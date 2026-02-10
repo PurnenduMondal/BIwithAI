@@ -2,15 +2,18 @@ import apiClient from './client';
 import type { Widget } from '../types';
 
 export interface CreateWidgetData {
-  widget_type: 'chart' | 'metric' | 'table' | 'text' | 'ai_insight';
+  widget_type: 'line' | 'bar' | 'pie' | 'area' | 'scatter' | 'heatmap' | 'metric' | 'table' | 'gauge';
   title: string;
+  description?: string;
   position: {
     x: number;
     y: number;
     w: number;
     h: number;
   };
-  config?: Record<string, any>;
+  query_config?: Record<string, any>;
+  chart_config?: Record<string, any>;
+  data_mapping?: Record<string, any>;
   data_source_id?: string;
 }
 

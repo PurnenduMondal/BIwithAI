@@ -1,10 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, delete as sql_delete
 from typing import List, Optional
 from uuid import UUID
 
-from app.api.deps import get_db, get_current_user
+from app.api.deps import get_db, get_current_user, get_user_organization
 from app.models.user import User
+from app.models.organization import Organization, OrganizationMember
 from app.services.ai.chat_service import DashboardChatService
 from app.schemas.chat import (
     ChatSessionCreate,
@@ -27,17 +29,19 @@ router = APIRouter(prefix="/chat", tags=["AI Chat"])
 async def create_chat_session(
     request: ChatSessionCreate,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    organization: Organization = Depends(get_user_organization),
+    db: AsyncSession = Depends(get_db)
 ):
     """Create a new chat session for dashboard generation"""
     chat_service = DashboardChatService(db)
     
     session = await chat_service.create_session(
         user_id=current_user.id,
-        org_id=current_user.organization_memberships[0].org_id,  # Should use proper org context
+        org_id=organization.id,
         data_source_id=request.data_source_id,
         title=request.title
     )
+
     
     # Add message count
     session.message_count = 0
@@ -50,14 +54,15 @@ async def list_chat_sessions(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    organization: Organization = Depends(get_user_organization),
+    db: AsyncSession = Depends(get_db)
 ):
     """List user's chat sessions"""
     chat_service = DashboardChatService(db)
     
     result = await chat_service.get_user_sessions(
         user_id=current_user.id,
-        org_id=current_user.organization_memberships[0].org_id,
+        org_id=organization.id,
         page=page,
         page_size=page_size
     )
@@ -70,7 +75,7 @@ async def get_chat_session(
     session_id: UUID,
     limit: int = Query(50, ge=1, le=200),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """Get a chat session with its messages"""
     chat_service = DashboardChatService(db)
@@ -98,7 +103,7 @@ async def send_message(
     session_id: UUID,
     request: ChatMessageCreate,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """Send a message in a chat session"""
     chat_service = DashboardChatService(db)
@@ -110,7 +115,24 @@ async def send_message(
             user_id=current_user.id
         )
         
-        return result["message"]
+        message = result["message"]
+        
+        # Add widget_previews and dashboard_id from response if available
+        response_data = {
+            "id": message.id,
+            "session_id": message.session_id,
+            "role": message.role,
+            "content": message.content,
+            "message_type": message.message_type,
+            "meta_data": message.meta_data,
+            "token_count": message.token_count,
+            "processing_time_ms": message.processing_time_ms,
+            "created_at": message.created_at,
+            "widget_previews": result.get("widget_previews"),
+            "dashboard_id": result.get("dashboard_id")        
+        }
+        
+        return response_data
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except PermissionError as e:
@@ -121,26 +143,29 @@ async def send_message(
 async def generate_dashboard(
     request: DashboardGenerationRequest,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    organization: Organization = Depends(get_user_organization),
+    db: AsyncSession = Depends(get_db)
 ):
     """Generate a dashboard from a natural language query"""
     chat_service = DashboardChatService(db)
     
     # Create a session if one doesn't exist
-    # In a real implementation, this should be passed or created separately
     from app.models.chat import ChatSession
     
     # Try to find or create session
-    session = db.query(ChatSession).filter(
-        ChatSession.user_id == current_user.id,
-        ChatSession.data_source_id == request.data_source_id,
-        ChatSession.status == "active"
-    ).order_by(ChatSession.last_message_at.desc()).first()
+    result = await db.execute(
+        select(ChatSession)
+        .where(ChatSession.user_id == current_user.id)
+        .where(ChatSession.data_source_id == request.data_source_id)
+        .where(ChatSession.status == "active")
+        .order_by(ChatSession.last_message_at.desc())
+    )
+    session = result.scalar_one_or_none()
     
     if not session:
         session = await chat_service.create_session(
             user_id=current_user.id,
-            org_id=current_user.organization_memberships[0].org_id,
+            org_id=organization.id,
             data_source_id=request.data_source_id,
             title=f"Dashboard: {request.query[:30]}"
         )
@@ -167,14 +192,16 @@ async def submit_feedback(
     generation_id: UUID,
     request: DashboardFeedbackRequest,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """Submit feedback for a dashboard generation"""
     from app.models.chat import DashboardGeneration
     
-    generation = db.query(DashboardGeneration).filter(
-        DashboardGeneration.id == generation_id
-    ).first()
+    result = await db.execute(
+        select(DashboardGeneration)
+        .where(DashboardGeneration.id == generation_id)
+    )
+    generation = result.scalar_one_or_none()
     
     if not generation:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Generation not found")
@@ -184,7 +211,7 @@ async def submit_feedback(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
     
     generation.feedback_score = request.feedback_score
-    db.commit()
+    await db.commit()
     
     return None
 
@@ -193,7 +220,7 @@ async def submit_feedback(
 async def get_quick_actions(
     data_source_id: Optional[UUID] = None,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """Get quick action suggestions"""
     chat_service = DashboardChatService(db)
@@ -204,7 +231,7 @@ async def get_quick_actions(
 async def get_chat_context(
     session_id: UUID,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """Get context information for a chat session"""
     from app.models.chat import ChatSession
@@ -214,10 +241,12 @@ async def get_chat_context(
     chat_service = DashboardChatService(db)
     
     # Get session
-    session = db.query(ChatSession).filter(
-        ChatSession.id == session_id,
-        ChatSession.user_id == current_user.id
-    ).first()
+    result = await db.execute(
+        select(ChatSession)
+        .where(ChatSession.id == session_id)
+        .where(ChatSession.user_id == current_user.id)
+    )
+    session = result.scalar_one_or_none()
     
     if not session:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
@@ -225,7 +254,10 @@ async def get_chat_context(
     # Get data source info
     data_source = None
     if session.data_source_id:
-        ds = db.query(DataSource).filter(DataSource.id == session.data_source_id).first()
+        result = await db.execute(
+            select(DataSource).where(DataSource.id == session.data_source_id)
+        )
+        ds = result.scalar_one_or_none()
         if ds:
             data_source = {
                 "id": str(ds.id),
@@ -235,13 +267,20 @@ async def get_chat_context(
     
     # Get recent dashboards from this session
     from app.models.chat import DashboardGeneration
-    recent_gens = db.query(DashboardGeneration).filter(
-        DashboardGeneration.session_id == session_id
-    ).order_by(DashboardGeneration.created_at.desc()).limit(5).all()
+    result = await db.execute(
+        select(DashboardGeneration)
+        .where(DashboardGeneration.session_id == session_id)
+        .order_by(DashboardGeneration.created_at.desc())
+        .limit(5)
+    )
+    recent_gens = result.scalars().all()
     
     recent_dashboards = []
     for gen in recent_gens:
-        dashboard = db.query(Dashboard).filter(Dashboard.id == gen.dashboard_id).first()
+        result = await db.execute(
+            select(Dashboard).where(Dashboard.id == gen.dashboard_id)
+        )
+        dashboard = result.scalar_one_or_none()
         if dashboard:
             recent_dashboards.append({
                 "id": str(dashboard.id),
@@ -264,21 +303,23 @@ async def get_chat_context(
 async def delete_chat_session(
     session_id: UUID,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """Delete a chat session"""
     from app.models.chat import ChatSession
     
-    session = db.query(ChatSession).filter(
-        ChatSession.id == session_id,
-        ChatSession.user_id == current_user.id
-    ).first()
+    result = await db.execute(
+        select(ChatSession)
+        .where(ChatSession.id == session_id)
+        .where(ChatSession.user_id == current_user.id)
+    )
+    session = result.scalar_one_or_none()
     
     if not session:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
     
-    db.delete(session)
-    db.commit()
+    await db.delete(session)
+    await db.commit()
     
     return None
 
@@ -287,20 +328,22 @@ async def delete_chat_session(
 async def archive_chat_session(
     session_id: UUID,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """Archive a chat session"""
     from app.models.chat import ChatSession
     
-    session = db.query(ChatSession).filter(
-        ChatSession.id == session_id,
-        ChatSession.user_id == current_user.id
-    ).first()
+    result = await db.execute(
+        select(ChatSession)
+        .where(ChatSession.id == session_id)
+        .where(ChatSession.user_id == current_user.id)
+    )
+    session = result.scalar_one_or_none()
     
     if not session:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
     
     session.status = "archived"
-    db.commit()
+    await db.commit()
     
     return None

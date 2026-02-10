@@ -1,11 +1,12 @@
 import logging
 import json
 import time
+import asyncio
 from typing import Dict, List, Any, Optional
 from uuid import UUID
 from datetime import datetime, timezone
-from sqlalchemy.orm import Session
-from sqlalchemy import desc, func
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import desc, func, select
 import pandas as pd
 
 from anthropic import Anthropic
@@ -16,6 +17,7 @@ from app.models.dashboard import Dashboard
 from app.models.widget import Widget
 from app.models.data_source import DataSource
 from app.services.ai.insight_generator import InsightGenerator
+from app.services.ai.dashboard_generator import DashboardGenerator
 from app.schemas.chat import QuickActionResponse
 
 logger = logging.getLogger(__name__)
@@ -24,11 +26,12 @@ logger = logging.getLogger(__name__)
 class DashboardChatService:
     """Service for AI-powered dashboard generation through chat"""
     
-    def __init__(self, db: Session):
+    def __init__(self, db: AsyncSession):
         self.db = db
         self.client = Anthropic(api_key=settings.ANTHROPIC_API_KEY)
         self.model = settings.ANTHROPIC_MODEL
         self.insight_generator = InsightGenerator()
+        self.dashboard_generator = DashboardGenerator()
     
     async def create_session(
         self,
@@ -45,8 +48,8 @@ class DashboardChatService:
             title=title or "New Dashboard Chat"
         )
         self.db.add(session)
-        self.db.commit()
-        self.db.refresh(session)
+        await self.db.commit()
+        await self.db.refresh(session)
         
         logger.info(f"Created chat session {session.id} for user {user_id}")
         return session
@@ -61,7 +64,8 @@ class DashboardChatService:
         start_time = time.time()
         
         # Get session
-        session = self.db.query(ChatSession).filter(ChatSession.id == session_id).first()
+        result = await self.db.execute(select(ChatSession).where(ChatSession.id == session_id))
+        session = result.scalar_one_or_none()
         if not session:
             raise ValueError("Session not found")
         
@@ -77,10 +81,10 @@ class DashboardChatService:
             message_type="text"
         )
         self.db.add(user_msg)
-        self.db.flush()
+        await self.db.flush()
         
         # Get conversation context
-        context = self._get_conversation_context(session_id)
+        context = await self._get_conversation_context(session_id)
         
         # Generate AI response based on message intent
         intent = await self._analyze_intent(user_message, context)
@@ -131,17 +135,19 @@ class DashboardChatService:
         # Update session
         session.last_message_at = datetime.now(timezone.utc)
         if not session.title or session.title == "New Dashboard Chat":
-            session.title = self._generate_session_title(user_message)
+            session.title = await self._generate_session_title(user_message)
         
-        self.db.commit()
-        self.db.refresh(assistant_msg)
+        await self.db.commit()
+        await self.db.refresh(assistant_msg)
         
         logger.info(f"Generated response for session {session_id} in {processing_time}ms")
         
         return {
             "message": assistant_msg,
             "intent": intent,
-            "processing_time_ms": processing_time
+            "processing_time_ms": processing_time,
+            "widget_previews": response.get("widget_previews"),  # Pass through widget previews
+            "dashboard_id": response.get("dashboard_id")  # Pass through dashboard ID
         }
     
     async def generate_dashboard(
@@ -157,33 +163,54 @@ class DashboardChatService:
         start_time = time.time()
         
         # Get session
-        session = self.db.query(ChatSession).filter(ChatSession.id == session_id).first()
+        result = await self.db.execute(select(ChatSession).where(ChatSession.id == session_id))
+        session = result.scalar_one_or_none()
         if not session or session.user_id != user_id:
             raise ValueError("Invalid session")
         
         # Get data source
-        data_source = self.db.query(DataSource).filter(DataSource.id == data_source_id).first()
+        result = await self.db.execute(select(DataSource).where(DataSource.id == data_source_id))
+        data_source = result.scalar_one_or_none()
         if not data_source:
             raise ValueError("Data source not found")
         
         # Load data (this should be optimized with caching)
         df, schema = await self._load_data_source(data_source)
         
-        # Generate insights
+        # Get conversation context for better generation
+        context = await self._get_conversation_context(session_id)
+        
+        # Analyze intent
+        intent = await self._analyze_intent(query, context)
+        
+        # Use DashboardGenerator for intelligent dashboard creation
+        dashboard_config = await self.dashboard_generator.generate_dashboard_config(
+            user_query=query,
+            df=df,
+            schema=schema,
+            intent=intent,
+            conversation_context=context
+        )
+        
+        # Generate insights separately
         insights = await self.insight_generator.generate_insights(df, schema, query)
         
-        # Generate charts based on query and insights
-        charts = await self._generate_charts_for_query(query, df, schema, insights)
+        # Generate insights separately
+        insights = await self.insight_generator.generate_insights(df, schema, query)
+        
+        # Merge insights from both sources
+        all_insights = dashboard_config.get('insights', []) + insights[:3]
         
         # Create or update dashboard
         if refinement and existing_dashboard_id:
-            dashboard = await self._refine_dashboard(existing_dashboard_id, charts)
+            dashboard = await self._refine_dashboard_with_config(
+                existing_dashboard_id,
+                dashboard_config.get('widgets', [])
+            )
         else:
-            dashboard = await self._create_dashboard(
+            dashboard = await self._create_dashboard_from_config(
                 session=session,
-                name=f"AI: {query[:50]}",
-                charts=charts,
-                insights=insights,
+                config=dashboard_config,
                 query=query
             )
         
@@ -196,11 +223,13 @@ class DashboardChatService:
             parent_generation_id=existing_dashboard_id if refinement else None
         )
         self.db.add(generation)
-        self.db.commit()
-        self.db.refresh(generation)
+        await self.db.commit()
+        await self.db.refresh(generation)
         
-        # Generate follow-up suggestions
-        suggestions = await self._generate_suggestions(query, insights, schema)
+        # Get suggestions from config or generate
+        suggestions = dashboard_config.get('suggestions', [])
+        if not suggestions:
+            suggestions = await self._generate_suggestions(query, all_insights, schema)
         
         processing_time = int((time.time() - start_time) * 1000)
         
@@ -209,10 +238,10 @@ class DashboardChatService:
         return {
             "dashboard_id": dashboard.id,
             "generation_id": generation.id,
-            "explanation": self._generate_explanation(charts, insights),
-            "charts": [self._serialize_chart(c) for c in charts],
-            "insights": insights,
-            "suggestions": suggestions,
+            "explanation": dashboard_config.get('dashboard', {}).get('description', self._generate_explanation(dashboard_config.get('widgets', []), all_insights)),
+            "charts": dashboard_config.get('widgets', []),
+            "insights": all_insights,
+            "suggestions": suggestions[:3],
             "processing_time_ms": processing_time
         }
     
@@ -223,17 +252,23 @@ class DashboardChatService:
         limit: int = 50
     ) -> Dict[str, Any]:
         """Get session with messages"""
-        session = self.db.query(ChatSession).filter(
-            ChatSession.id == session_id,
-            ChatSession.user_id == user_id
-        ).first()
+        result = await self.db.execute(
+            select(ChatSession)
+            .where(ChatSession.id == session_id)
+            .where(ChatSession.user_id == user_id)
+        )
+        session = result.scalar_one_or_none()
         
         if not session:
             raise ValueError("Session not found")
         
-        messages = self.db.query(ChatMessage).filter(
-            ChatMessage.session_id == session_id
-        ).order_by(ChatMessage.created_at.asc()).limit(limit).all()
+        result = await self.db.execute(
+            select(ChatMessage)
+            .where(ChatMessage.session_id == session_id)
+            .order_by(ChatMessage.created_at.asc())
+            .limit(limit)
+        )
+        messages = result.scalars().all()
         
         return {
             "session": session,
@@ -249,21 +284,32 @@ class DashboardChatService:
         page_size: int = 20
     ) -> Dict[str, Any]:
         """Get user's chat sessions"""
-        query = self.db.query(ChatSession).filter(
-            ChatSession.user_id == user_id,
-            ChatSession.organization_id == org_id
+        # Get total count
+        count_result = await self.db.execute(
+            select(func.count(ChatSession.id))
+            .where(ChatSession.user_id == user_id)
+            .where(ChatSession.organization_id == org_id)
         )
+        total = count_result.scalar()
         
-        total = query.count()
-        sessions = query.order_by(
-            desc(ChatSession.last_message_at)
-        ).offset((page - 1) * page_size).limit(page_size).all()
+        # Get sessions
+        result = await self.db.execute(
+            select(ChatSession)
+            .where(ChatSession.user_id == user_id)
+            .where(ChatSession.organization_id == org_id)
+            .order_by(desc(ChatSession.last_message_at).nulls_last(), desc(ChatSession.created_at))
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+        sessions = result.scalars().all()
         
         # Add message counts
         for session in sessions:
-            session.message_count = self.db.query(func.count(ChatMessage.id)).filter(
-                ChatMessage.session_id == session.id
-            ).scalar()
+            count_result = await self.db.execute(
+                select(func.count(ChatMessage.id))
+                .where(ChatMessage.session_id == session.id)
+            )
+            session.message_count = count_result.scalar()
         
         return {
             "sessions": sessions,
@@ -299,7 +345,21 @@ class DashboardChatService:
         
         # Add data-source specific actions if available
         if data_source_id:
-            ds = self.db.query(DataSource).filter(DataSource.id == data_source_id).first()
+            # Note: This method is not async, but we need to query the DB
+            # This should be refactored or the method should be made async
+            # For now, we'll skip the data source specific actions
+            # TODO: Make get_quick_actions async
+            pass
+        
+        return actions
+    
+    async def get_quick_actions_async(self, data_source_id: Optional[UUID] = None) -> List[QuickActionResponse]:
+        """Get quick action suggestions (async version)"""
+        actions = self.get_quick_actions(data_source_id)
+        
+        if data_source_id:
+            result = await self.db.execute(select(DataSource).where(DataSource.id == data_source_id))
+            ds = result.scalar_one_or_none()
             if ds and ds.schema_metadata:
                 # Add custom actions based on schema
                 schema = ds.schema_metadata
@@ -314,11 +374,15 @@ class DashboardChatService:
     
     # Private helper methods
     
-    def _get_conversation_context(self, session_id: UUID, limit: int = 10) -> List[Dict]:
+    async def _get_conversation_context(self, session_id: UUID, limit: int = 10) -> List[Dict]:
         """Get recent conversation messages"""
-        messages = self.db.query(ChatMessage).filter(
-            ChatMessage.session_id == session_id
-        ).order_by(desc(ChatMessage.created_at)).limit(limit).all()
+        result = await self.db.execute(
+            select(ChatMessage)
+            .where(ChatMessage.session_id == session_id)
+            .order_by(desc(ChatMessage.created_at))
+            .limit(limit)
+        )
+        messages = result.scalars().all()
         
         return [
             {"role": msg.role, "content": msg.content}
@@ -375,7 +439,7 @@ Return JSON with:
         intent: Dict,
         context: List[Dict]
     ) -> Dict[str, Any]:
-        """Handle dashboard generation request"""
+        """Handle dashboard generation request - creates widgets immediately with preview"""
         if not session.data_source_id:
             return {
                 "content": "I'd be happy to help create a dashboard! First, please select a data source you'd like to visualize.",
@@ -383,15 +447,115 @@ Return JSON with:
                 "meta_data": {"needs_data_source": True}
             }
         
-        # Will generate dashboard in separate call
-        return {
-            "content": "I'll analyze your data and create a dashboard. This will take a moment...",
-            "message_type": "text",
-            "meta_data": {
-                "action_required": "generate_dashboard",
-                "query": user_message
+        try:
+            # Load data source
+            result = await self.db.execute(
+                select(DataSource).where(DataSource.id == session.data_source_id)
+            )
+            data_source = result.scalar_one_or_none()
+            
+            if not data_source:
+                return {
+                    "content": "Data source not found. Please select a valid data source.",
+                    "message_type": "text"
+                }
+            
+            # Load data
+            df, schema = await self._load_data_source(data_source)
+            
+            # Generate dashboard config using AI
+            dashboard_config = await self.dashboard_generator.generate_dashboard_config(
+                user_query=user_message,
+                df=df,
+                schema=schema,
+                intent=intent,
+                conversation_context=context
+            )
+            
+            # Create or get draft dashboard for this session
+            dashboard = await self._get_or_create_draft_dashboard(session, user_message)
+            
+            # Create widgets from config
+            widget_previews = []
+            for widget_config in dashboard_config.get('widgets', []):
+                # Create widget in DB
+                widget = Widget(
+                    dashboard_id=dashboard.id,
+                    data_source_id=session.data_source_id,
+                    title=widget_config.get('title', 'Untitled'),
+                    description=widget_config.get('description'),
+                    widget_type=widget_config.get('type', 'bar'),
+                    query_config=widget_config.get('query_config', {}),
+                    chart_config=widget_config.get('chart_config', {}),
+                    position=widget_config.get('position', {"x": 0, "y": len(widget_previews) * 6, "w": 6, "h": 9}),
+                    generated_by_ai=True,
+                    generation_prompt=user_message,
+                    ai_reasoning=widget_config.get('reasoning')
+                )
+                self.db.add(widget)
+                await self.db.flush()
+                await self.db.refresh(widget)
+                
+                # Get preview data by executing the widget query
+                from app.services.query.query_executor import QueryExecutor
+                query_executor = QueryExecutor()
+                
+                # Merge configs for execution
+                merged_config = {
+                    **(widget.query_config or {}),
+                    **(widget.chart_config or {})
+                }
+                
+                # Execute query to get preview data
+                preview_result = await query_executor.execute_widget_query(
+                    df=df,
+                    config=merged_config,
+                    widget_type=widget.widget_type
+                )
+                
+                # Extract data from the result dict (already JSON-safe from query_executor)
+                # preview_result is a dict with 'data', 'columns', 'metadata' keys
+                preview_data = preview_result.get('data', [])
+                
+                widget_previews.append({
+                    "widget": {
+                        "id": str(widget.id),
+                        "title": widget.title,
+                        "description": widget.description,
+                        "widget_type": widget.widget_type,
+                        "query_config": widget.query_config,
+                        "chart_config": widget.chart_config,
+                        "position": widget.position,
+                        "ai_reasoning": widget.ai_reasoning
+                    },
+                    "data": preview_data[:100] if isinstance(preview_data, list) else preview_data  # Limit to 100 rows for preview
+                })
+            
+            await self.db.commit()
+            
+            # Generate explanation
+            explanation = dashboard_config.get('dashboard', {}).get('description', 
+                f"I've created {len(widget_previews)} visualization(s) based on your request. You can see the preview below.")
+            
+            return {
+                "content": explanation,
+                "message_type": "widget_preview",
+                "meta_data": {
+                    "dashboard_id": str(dashboard.id),
+                    "widget_count": len(widget_previews),
+                    "insights": dashboard_config.get('insights', [])
+                },
+                "widget_previews": widget_previews,
+                "dashboard_id": dashboard.id
             }
-        }
+            
+        except Exception as e:
+            logger.error(f"Error generating dashboard: {e}", exc_info=True)
+            return {
+                "content": f"I encountered an error while creating the visualization: {str(e)}. Please try rephrasing your request.",
+                "message_type": "text",
+                "meta_data": {"error": str(e)}
+            }
     
     async def _handle_dashboard_refinement(
         self,
@@ -402,9 +566,12 @@ Return JSON with:
     ) -> Dict[str, Any]:
         """Handle dashboard refinement request"""
         # Get most recent dashboard from session
-        recent_gen = self.db.query(DashboardGeneration).filter(
-            DashboardGeneration.session_id == session.id
-        ).order_by(desc(DashboardGeneration.created_at)).first()
+        result = await self.db.execute(
+            select(DashboardGeneration)
+            .where(DashboardGeneration.session_id == session.id)
+            .order_by(desc(DashboardGeneration.created_at))
+        )
+        recent_gen = result.scalar_one_or_none()
         
         if not recent_gen:
             return {
@@ -468,129 +635,167 @@ Provide a helpful, concise answer. If you need more information or access to spe
         """Handle general conversation"""
         return await self._handle_question(session, user_message, {}, context)
     
-    def _generate_session_title(self, first_message: str) -> str:
-        """Generate a title from the first message"""
-        title = first_message[:50]
-        if len(first_message) > 50:
-            title += "..."
-        return title
+    async def _generate_session_title(self, first_message: str) -> str:
+        """Generate a concise title from the first message using AI"""
+        try:
+            # Use Claude to generate a short, descriptive title
+            # Run the blocking Anthropic call in a thread pool
+            def _generate_title():
+                response = self.client.messages.create(
+                    model=self.model,
+                    max_tokens=50,
+                    temperature=0.3,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": f"""Generate a concise 3-7 word title for a dashboard chat session based on this user request:
+
+"{first_message}"
+
+Requirements:
+- 3-7 words maximum
+- Descriptive and specific
+- No quotation marks
+- Title case
+- Focus on the main intent (e.g., "Sales Analysis Dashboard", "Revenue Trend Analysis", "Top Products by Region")
+
+Title:"""
+                        }
+                    ]
+                )
+                return response
+            
+            # Run in thread pool to avoid blocking
+            response = await asyncio.to_thread(_generate_title)
+            
+            # Extract title from response
+            title = response.content[0].text.strip()
+            
+            # Remove quotes if present
+            title = title.strip('"\'')
+            
+            # Ensure it's not too long (backup validation)
+            words = title.split()
+            if len(words) > 7:
+                title = ' '.join(words[:7])
+            
+            logger.info(f"Generated AI title: {title}")
+            return title
+            
+        except Exception as e:
+            # Fallback to truncation if AI call fails
+            logger.warning(f"Failed to generate AI title, using fallback: {e}")
+            title = first_message[:50]
+            if len(first_message) > 50:
+                title += "..."
+            return title
     
     async def _load_data_source(self, data_source: DataSource) -> tuple:
         """Load data from data source"""
-        # This should use the existing data loading logic
-        # For now, placeholder - should integrate with actual data loading service
-        from app.services.data_ingestion.csv_reader import CSVReader
+        from app.services.data_ingestion.csv_connector import CSVConnector
+        from app.services.data_ingestion.database_connector import DatabaseConnector
+        from app.utils.encryption import decrypt_dict
+        
+        # Decrypt connection config
+        config = decrypt_dict(data_source.connection_config)
         
         if data_source.type.value == "csv":
-            reader = CSVReader()
-            df = await reader.read_data(data_source)
+            connector = CSVConnector(config)
+            df = await connector.fetch_data()
+            schema = data_source.schema_metadata
+            return df, schema
+        elif data_source.type.value in ["postgresql", "mysql"]:
+            connector = DatabaseConnector(data_source.type.value, config)
+            df = await connector.fetch_data()
             schema = data_source.schema_metadata
             return df, schema
         
         raise NotImplementedError(f"Data source type {data_source.type} not yet supported")
     
-    async def _generate_charts_for_query(
-        self,
-        query: str,
-        df: pd.DataFrame,
-        schema: Dict,
-        insights: List[Dict]
-    ) -> List[Dict]:
-        """Generate chart configurations based on query"""
-        # This should use intelligent chart selection
-        # For now, return basic charts based on schema
-        charts = []
-        
-        # Add a trend chart if time column exists
-        if schema.get('time_column') and schema.get('metrics'):
-            metric = list(schema['metrics'].keys())[0]
-            charts.append({
-                "type": "line",
-                "title": f"{metric} Over Time",
-                "config": {
-                    "x_axis": schema['time_column'],
-                    "y_axis": metric,
-                    "aggregation": "sum"
-                }
-            })
-        
-        # Add summary metrics
-        if schema.get('metrics'):
-            for metric_name in list(schema['metrics'].keys())[:3]:
-                charts.append({
-                    "type": "metric",
-                    "title": metric_name.replace('_', ' ').title(),
-                    "config": {
-                        "metric": metric_name,
-                        "aggregation": "sum"
-                    }
-                })
-        
-        return charts
-    
-    async def _create_dashboard(
+    async def _create_dashboard_from_config(
         self,
         session: ChatSession,
-        name: str,
-        charts: List[Dict],
-        insights: List[Dict],
+        config: Dict[str, Any],
         query: str
     ) -> Dashboard:
-        """Create a new dashboard"""
+        """Create a new dashboard from AI-generated config"""
+        dashboard_info = config.get('dashboard', {})
+        
         dashboard = Dashboard(
-            name=name,
+            name=dashboard_info.get('name', f"AI: {query[:50]}"),
+            description=dashboard_info.get('description'),
             org_id=session.organization_id,
             created_by=session.user_id,
             generated_by_ai=True,
-            generation_context={"query": query, "insights_count": len(insights)}
+            generation_context={
+                "query": query,
+                "widget_count": len(config.get('widgets', [])),
+                "insight_count": len(config.get('insights', []))
+            }
         )
         self.db.add(dashboard)
-        self.db.flush()
+        await self.db.flush()
         
-        # Add widgets (charts)
-        for idx, chart in enumerate(charts):
+        # Add widgets from config
+        for widget_config in config.get('widgets', []):
             widget = Widget(
                 dashboard_id=dashboard.id,
                 data_source_id=session.data_source_id,
-                title=chart.get("title", f"Chart {idx + 1}"),
-                type=chart.get("type", "line"),
-                config=chart.get("config", {}),
-                position_x=0,
-                position_y=idx * 2,
-                width=12,
-                height=2
+                title=widget_config.get('title', 'Untitled'),
+                description=widget_config.get('description'),
+                widget_type=widget_config.get('type', 'line'),
+                query_config=widget_config.get('query_config', {}),
+                chart_config=widget_config.get('chart_config', {}),
+                position=widget_config.get('position', {"x": 0, "y": 0, "w": 6, "h": 9}),
+                generated_by_ai=True,
+                generation_prompt=query,
+                ai_reasoning=widget_config.get('reasoning')
             )
             self.db.add(widget)
         
-        self.db.flush()
+        await self.db.flush()
         return dashboard
     
-    async def _refine_dashboard(self, dashboard_id: UUID, new_charts: List[Dict]) -> Dashboard:
-        """Refine existing dashboard"""
-        dashboard = self.db.query(Dashboard).filter(Dashboard.id == dashboard_id).first()
+    async def _refine_dashboard_with_config(
+        self,
+        dashboard_id: UUID,
+        new_widgets: List[Dict]
+    ) -> Dashboard:
+        """Refine existing dashboard with new widgets"""
+        result = await self.db.execute(select(Dashboard).where(Dashboard.id == dashboard_id))
+        dashboard = result.scalar_one_or_none()
         if not dashboard:
             raise ValueError("Dashboard not found")
         
-        # Add new widgets
-        max_y = self.db.query(func.max(Widget.position_y)).filter(
-            Widget.dashboard_id == dashboard_id
-        ).scalar() or 0
+        # Get max Y position from existing widgets
+        max_y = 0
+        for widget in dashboard.widgets:
+            widget_y = widget.position.get('y', 0) + widget.position.get('h', 0)
+            if widget_y > max_y:
+                max_y = widget_y
         
-        for idx, chart in enumerate(new_charts):
+        # Add new widgets
+        for widget_config in new_widgets:
+            position = widget_config.get('position', {})
+            if not position or 'y' not in position:
+                position = {"x": 0, "y": max_y, "w": 6, "h": 4}
+                max_y += 4
+            
             widget = Widget(
                 dashboard_id=dashboard.id,
                 data_source_id=dashboard.widgets[0].data_source_id if dashboard.widgets else None,
-                title=chart.get("title", f"Chart {idx + 1}"),
-                type=chart.get("type", "line"),
-                config=chart.get("config", {}),
-                position_x=0,
-                position_y=max_y + idx + 1,
-                width=12,
-                height=2
+                title=widget_config.get('title', 'New Widget'),
+                description=widget_config.get('description'),
+                widget_type=widget_config.get('type', 'line'),
+                query_config=widget_config.get('query_config', {}),
+                chart_config=widget_config.get('chart_config', {}),
+                position=position,
+                generated_by_ai=True,
+                ai_reasoning=widget_config.get('reasoning')
             )
             self.db.add(widget)
         
-        self.db.flush()
+        await self.db.flush()
         return dashboard
     
     async def _generate_suggestions(
@@ -615,10 +820,49 @@ Provide a helpful, concise answer. If you need more information or access to spe
         
         return suggestions[:3]
     
-    def _generate_explanation(self, charts: List[Dict], insights: List[Dict]) -> str:
+    def _generate_explanation(self, widgets: List[Dict], insights: List[Dict]) -> str:
         """Generate explanation of what was created"""
-        return f"I've created a dashboard with {len(charts)} visualizations based on {len(insights)} key insights from your data."
+        return f"I've created a dashboard with {len(widgets)} visualizations based on {len(insights)} key insights from your data."
     
-    def _serialize_chart(self, chart: Dict) -> Dict:
-        """Serialize chart for response"""
-        return chart
+    async def _get_or_create_draft_dashboard(self, session: ChatSession, query: str) -> Dashboard:
+        """Get or create a draft dashboard for the session"""
+        # Check if session already has a draft dashboard
+        result = await self.db.execute(
+            select(DashboardGeneration)
+            .where(DashboardGeneration.session_id == session.id)
+            .order_by(desc(DashboardGeneration.created_at))
+        )
+        recent_gen = result.scalar_one_or_none()
+        
+        if recent_gen:
+            result = await self.db.execute(
+                select(Dashboard).where(Dashboard.id == recent_gen.dashboard_id)
+            )
+            dashboard = result.scalar_one_or_none()
+            if dashboard:
+                return dashboard
+        
+        # Create new draft dashboard
+        dashboard = Dashboard(
+            name=f"AI Draft: {query[:40]}",
+            description=f"AI-generated dashboard from chat",
+            org_id=session.organization_id,
+            created_by=session.user_id,
+            generated_by_ai=True,
+            generation_context={"session_id": str(session.id), "query": query}
+        )
+        self.db.add(dashboard)
+        await self.db.flush()
+        await self.db.refresh(dashboard)
+        
+        # Track generation
+        generation = DashboardGeneration(
+            session_id=session.id,
+            dashboard_id=dashboard.id,
+            generation_prompt=query,
+            is_refinement=False
+        )
+        self.db.add(generation)
+        await self.db.flush()
+        
+        return dashboard

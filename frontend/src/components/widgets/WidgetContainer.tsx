@@ -22,17 +22,30 @@ export const WidgetContainer = ({ widget, isEditing, onOpenSettings }: WidgetCon
   };
 
   const renderWidget = () => {
+    // Chart types that use ChartWidget component
+    const chartTypes = ['line', 'bar', 'pie', 'area', 'scatter', 'heatmap'];
+    
+    if (chartTypes.includes(widget.widget_type)) {
+      return <ChartWidget widget={widget} />;
+    }
+    
     switch (widget.widget_type) {
       case 'metric':
+      case 'gauge':
         return <MetricCard widget={widget} />;
-      case 'chart':
-        return <ChartWidget widget={widget} />;
       case 'table':
         return <TableWidget widget={widget} />;
-      case 'ai_insight':
-        return <InsightWidget widget={widget} />;
       default:
-        return <div>Unknown widget type</div>;
+        return (
+          <div className="flex items-center justify-center h-full text-gray-400">
+            <div className="text-center">
+              <p className="text-sm">Unsupported widget type: {widget.widget_type}</p>
+              {widget.ai_reasoning && (
+                <p className="text-xs mt-2 text-gray-500 italic">{widget.ai_reasoning}</p>
+              )}
+            </div>
+          </div>
+        );
     }
   };
 

@@ -77,3 +77,8 @@ celery -A app.workers.celery_app purge
 # ========================================
 purnendu5031@gmail.com
 P@$$w0rd
+
+test@example.com
+testuser2@example.com
+testuser3@example.com
+Test123!@#

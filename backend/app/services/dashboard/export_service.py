@@ -1,11 +1,11 @@
 import io
 import json
 import base64
-from typing import Dict, Any
-from datetime import datetime
+from typing import Dict, Any, Optional
+from datetime import datetime, timezone
 import logging
+import pandas as pd
 
-from pytz import timezone
 from reportlab.lib.pagesizes import letter, A4
 from reportlab.lib import colors
 from reportlab.lib.units import inch
@@ -17,16 +17,23 @@ import matplotlib.pyplot as plt
 import matplotlib
 matplotlib.use('Agg')  # Non-interactive backend
 
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.models.dashboard import Dashboard
 from app.models.widget import Widget
+from app.models.data_source import DataSource, Dataset
+from app.services.query.query_executor import QueryExecutor
 
 logger = logging.getLogger(__name__)
 
 class ExportService:
     """Service for exporting dashboards and widgets"""
     
-    def __init__(self):
+    def __init__(self, db_session: Optional[AsyncSession] = None):
         self.styles = getSampleStyleSheet()
+        self.db_session = db_session
+        self.query_executor = QueryExecutor()
         
     async def export_dashboard_to_pdf(self, dashboard: Dashboard) -> bytes:
         """Export dashboard to PDF"""
@@ -113,24 +120,33 @@ class ExportService:
             
             # Widget visualization/data
             try:
-                if widget.widget_type in ['chart', 'metric_card']:
+                if widget.widget_type in ['chart', 'bar', 'line', 'pie', 'area', 'scatter', 'metric_card', 'metric']:
                     # Generate chart image
                     chart_image = await self._generate_widget_chart(widget)
                     if chart_image:
                         # Convert to reportlab Image
                         img = Image(chart_image, width=6*inch, height=3*inch)
                         elements.append(img)
+                    else:
+                        # No data available
+                        no_data_text = f"<font color='gray'>[No data available for this widget]</font>"
+                        elements.append(Paragraph(no_data_text, self.styles['Normal']))
                 
                 elif widget.widget_type == 'table':
                     # Render table data
                     table_data = await self._get_widget_table_data(widget)
-                    if table_data:
+                    if table_data and len(table_data) > 1:
                         widget_table = self._create_pdf_table(table_data)
                         elements.append(widget_table)
+                    else:
+                        # No data available
+                        no_data_text = f"<font color='gray'>[No data available for this widget]</font>"
+                        elements.append(Paragraph(no_data_text, self.styles['Normal']))
                 
                 elif widget.widget_type == 'insights_panel':
                     # Render insights as bullet points
-                    insights = widget.config.get('insights', [])
+                    widget_config = {**(widget.query_config or {}), **(widget.chart_config or {})}
+                    insights = widget_config.get('insights', [])
                     for insight in insights[:5]:  # Limit to 5
                         insight_text = f"• {insight.get('title', '')}: {insight.get('description', '')}"
                         insight_para = Paragraph(insight_text, self.styles['Normal'])
@@ -225,12 +241,16 @@ class ExportService:
         }
         
         for widget in dashboard.widgets:
+            widget_config = {**(widget.query_config or {}), **(widget.chart_config or {})}
             widget_data = {
                 'id': str(widget.id),
                 'type': widget.widget_type,
                 'title': widget.title,
                 'position': widget.position,
-                'config': widget.config
+                'config': widget_config,
+                'query_config': widget.query_config,
+                'chart_config': widget.chart_config,
+                'data_mapping': widget.data_mapping
             }
             dashboard_data['widgets'].append(widget_data)
         
@@ -269,13 +289,17 @@ class ExportService:
     
     async def export_widget_to_json(self, widget: Widget) -> bytes:
         """Export widget configuration to JSON"""
+        widget_config = {**(widget.query_config or {}), **(widget.chart_config or {})}
         widget_data = {
             'id': str(widget.id),
             'dashboard_id': str(widget.dashboard_id),
             'type': widget.widget_type,
             'title': widget.title,
             'position': widget.position,
-            'config': widget.config,
+            'config': widget_config,
+            'query_config': widget.query_config,
+            'chart_config': widget.chart_config,
+            'data_mapping': widget.data_mapping,
             'created_at': widget.created_at.isoformat()
         }
         
@@ -297,40 +321,104 @@ class ExportService:
     
     async def _render_widget_to_axis(self, widget: Widget, ax):
         """Render widget content to matplotlib axis"""
-        config = widget.config
+        # Fetch actual widget data
+        widget_data = await self._get_widget_data(widget)
         
-        if widget.widget_type == 'metric_card':
-            # Simple metric display
-            metric = config.get('metric', 'N/A')
-            value = config.get('value', '0')
+        if not widget_data or not widget_data.get('data'):
+            # No data available
+            ax.text(0.5, 0.5, f'{widget.title}\n(No data available)', 
+                   ha='center', va='center', fontsize=12, color='gray')
+            ax.set_xlim(0, 1)
+            ax.set_ylim(0, 1)
+            ax.axis('off')
+            return
+        
+        data = widget_data['data']
+        
+        # Merge query_config and chart_config for backward compatibility
+        config = {**(widget.query_config or {}), **(widget.chart_config or {})}
+        
+        if widget.widget_type == 'metric_card' or widget.widget_type == 'metric':
+            # Display metric value
+            if data and len(data) > 0:
+                # Get the first row of data
+                first_row = data[0]
+                # Get the value from the aggregated column
+                value = first_row.get(config.get('y_axis', 'value'), 'N/A')
+                metric_label = config.get('y_axis', 'Value')
+            else:
+                value = 'N/A'
+                metric_label = 'Value'
             
             ax.text(0.5, 0.6, str(value), 
                    ha='center', va='center', fontsize=48, fontweight='bold')
-            ax.text(0.5, 0.3, metric, 
+            ax.text(0.5, 0.3, metric_label, 
                    ha='center', va='center', fontsize=14, color='gray')
             ax.set_xlim(0, 1)
             ax.set_ylim(0, 1)
             ax.axis('off')
         
-        elif widget.widget_type == 'chart':
-            chart_type = config.get('chart_type', 'bar')
+        elif widget.widget_type in ['chart', 'bar', 'line', 'pie', 'area', 'scatter']:
+            chart_type = widget.widget_type if widget.widget_type != 'chart' else config.get('chart_type', 'bar')
+            x_axis = config.get('x_axis', 'x')
+            y_axis = config.get('y_axis', 'y')
             
-            # Mock data for visualization
-            # In production, you'd fetch actual data
-            categories = ['Jan', 'Feb', 'Mar', 'Apr', 'May']
-            values = [23, 45, 56, 78, 90]
-            
-            if chart_type == 'bar':
-                ax.bar(categories, values, color='#1976d2')
-                ax.set_ylabel(config.get('y_axis', 'Value'))
-            elif chart_type == 'line':
-                ax.plot(categories, values, marker='o', linewidth=2, color='#1976d2')
-                ax.set_ylabel(config.get('y_axis', 'Value'))
-            elif chart_type == 'pie':
-                ax.pie(values, labels=categories, autopct='%1.1f%%')
-            
-            ax.set_title(widget.title, fontsize=12, fontweight='bold')
-            ax.grid(True, alpha=0.3)
+            # Extract data for plotting
+            if data and len(data) > 0:
+                df = pd.DataFrame(data)
+                
+                if x_axis in df.columns and y_axis in df.columns:
+                    categories = df[x_axis].tolist()
+                    values = df[y_axis].tolist()
+                    
+                    if chart_type == 'bar':
+                        ax.bar(categories, values, color='#1976d2')
+                        ax.set_ylabel(y_axis)
+                        ax.set_xlabel(x_axis)
+                    elif chart_type == 'line':
+                        ax.plot(categories, values, marker='o', linewidth=2, color='#1976d2')
+                        ax.set_ylabel(y_axis)
+                        ax.set_xlabel(x_axis)
+                    elif chart_type == 'pie':
+                        ax.pie(values, labels=categories, autopct='%1.1f%%')
+                    elif chart_type == 'area':
+                        ax.fill_between(range(len(values)), values, alpha=0.5, color='#1976d2')
+                        ax.plot(categories, values, linewidth=2, color='#1976d2')
+                        ax.set_ylabel(y_axis)
+                        ax.set_xlabel(x_axis)
+                    elif chart_type == 'scatter':
+                        ax.scatter(categories, values, s=100, color='#1976d2')
+                        ax.set_ylabel(y_axis)
+                        ax.set_xlabel(x_axis)
+                    
+                    ax.set_title(widget.title, fontsize=12, fontweight='bold')
+                    if chart_type != 'pie':
+                        ax.grid(True, alpha=0.3)
+                        # Rotate x-axis labels if too many
+                        if len(categories) > 5:
+                            ax.tick_params(axis='x', rotation=45)
+                else:
+                    ax.text(0.5, 0.5, f'{widget.title}\n(Invalid data columns)', 
+                           ha='center', va='center', fontsize=12, color='red')
+                    ax.axis('off')
+            else:
+                ax.text(0.5, 0.5, f'{widget.title}\n(No data)', 
+                       ha='center', va='center', fontsize=12, color='gray')
+                ax.axis('off')
+        
+        elif widget.widget_type == 'table':
+            # Display table data
+            if data and len(data) > 0:
+                df = pd.DataFrame(data)
+                # Show first 10 rows
+                table_text = df.head(10).to_string()
+                ax.text(0.05, 0.95, table_text, 
+                       ha='left', va='top', fontsize=6, family='monospace')
+                ax.set_title(widget.title, fontsize=12, fontweight='bold')
+            else:
+                ax.text(0.5, 0.5, f'{widget.title}\n(No data)', 
+                       ha='center', va='center', fontsize=12, color='gray')
+            ax.axis('off')
         
         else:
             # Default rendering
@@ -338,14 +426,90 @@ class ExportService:
                    ha='center', va='center', fontsize=14)
             ax.axis('off')
     
+    async def _get_widget_data(self, widget: Widget) -> Optional[Dict[str, Any]]:
+        """Fetch actual data for a widget"""
+        if not self.db_session:
+            logger.warning(f"No database session available for widget {widget.id}")
+            return None
+            
+        if not widget.data_source_id:
+            logger.info(f"Widget {widget.id} has no data source, skipping data fetch")
+            return None
+        
+        try:
+            logger.info(f"Fetching data for widget {widget.id} from data source {widget.data_source_id}")
+            
+            # Get data source
+            ds_result = await self.db_session.execute(
+                select(DataSource).where(DataSource.id == widget.data_source_id)
+            )
+            data_source = ds_result.scalar_one_or_none()
+            
+            if not data_source:
+                logger.warning(f"Data source {widget.data_source_id} not found for widget {widget.id}")
+                return None
+            
+            logger.info(f"Found data source: {data_source.name}")
+            
+            # Get latest dataset
+            dataset_result = await self.db_session.execute(
+                select(Dataset)
+                .where(Dataset.data_source_id == data_source.id)
+                .order_by(Dataset.version.desc())
+                .limit(1)
+            )
+            dataset = dataset_result.scalar_one_or_none()
+            
+            if not dataset:
+                logger.warning(f"No dataset found for data source {data_source.id}")
+                return None
+            
+            logger.info(f"Loading data from dataset version {dataset.version}, path: {dataset.storage_path}")
+            
+            # Load data from parquet
+            df = pd.read_parquet(dataset.storage_path)
+            logger.info(f"Loaded dataframe with shape {df.shape}")
+            
+            # Execute widget query
+            widget_config = {
+                **(widget.query_config or {}),
+                **(widget.chart_config or {}),
+            }
+            
+            logger.info(f"Executing widget query with config: {widget_config}")
+            result_data = await self.query_executor.execute_widget_query(
+                df, widget_config, widget.widget_type
+            )
+            
+            logger.info(f"Query executed, got {len(result_data.get('data', []))} rows")
+            return result_data
+            
+        except Exception as e:
+            logger.error(f"Error fetching widget data for {widget.id}: {str(e)}", exc_info=True)
+            return None
+    
     async def _get_widget_table_data(self, widget: Widget) -> list:
         """Get table data for widget"""
-        # Mock data - in production, fetch from data source
-        return [
-            ['Column 1', 'Column 2', 'Column 3'],
-            ['Value 1', 'Value 2', 'Value 3'],
-            ['Value 4', 'Value 5', 'Value 6'],
-        ]
+        # Fetch actual widget data
+        widget_data = await self._get_widget_data(widget)
+        
+        if not widget_data or not widget_data.get('data'):
+            return []
+        
+        data = widget_data['data']
+        columns = widget_data.get('columns', [])
+        
+        if not data:
+            return []
+        
+        # Convert to table format
+        table_data = [columns] if columns else [list(data[0].keys())]
+        
+        # Add data rows (limit to 20 rows for PDF)
+        for row in data[:20]:
+            table_data.append([str(row.get(col, '')) for col in table_data[0]])
+        
+        return table_data
     
     def _create_pdf_table(self, data: list) -> Table:
         """Create formatted PDF table"""

@@ -6,18 +6,23 @@ import { LineChart } from '../charts/LineChart';
 import { BarChart } from '../charts/BarChart';
 import { PieChart } from '../charts/PieChart';
 import { AreaChart } from '../charts/AreaChart';
+import { ScatterChart } from '../charts/ScatterChart';
 
 interface ChartWidgetProps {
   widget: Widget;
+  data?: any[]; // Optional data for preview mode (chat)
 }
 
-export const ChartWidget = ({ widget }: ChartWidgetProps) => {
-  const { data, isLoading } = useQuery({
+export const ChartWidget = ({ widget, data: previewData }: ChartWidgetProps) => {
+  const { data: fetchedData, isLoading } = useQuery({
     queryKey: ['widgetData', widget.id],
     queryFn: () => widgetApi.getData(widget.id),
+    enabled: !previewData, // Skip query if preview data provided
+    staleTime: 0, // Always consider data stale
+    refetchOnMount: true, // Refetch when component mounts
   });
 
-  if (isLoading) {
+  if (!previewData && isLoading) {
     return (
       <div className="flex items-center justify-center h-full">
         <Loader />
@@ -25,21 +30,34 @@ export const ChartWidget = ({ widget }: ChartWidgetProps) => {
     );
   }
 
-  const chartType = widget.config?.chart_type || 'line';
-  const chartData = data?.data || [];
+  const chartData = previewData || fetchedData?.data || [];
+  const chartConfig = { ...widget.chart_config, ...widget.query_config };
 
   const renderChart = () => {
-    switch (chartType) {
+    switch (widget.widget_type) {
       case 'line':
-        return <LineChart data={chartData} config={widget.config} />;
+        return <LineChart data={chartData} config={chartConfig} />;
       case 'bar':
-        return <BarChart data={chartData} config={widget.config} />;
+        return <BarChart data={chartData} config={chartConfig} />;
       case 'pie':
-        return <PieChart data={chartData} config={widget.config} />;
+        return <PieChart data={chartData} config={chartConfig} />;
       case 'area':
-        return <AreaChart data={chartData} config={widget.config} />;
+        return <AreaChart data={chartData} config={chartConfig} />;
+      case 'scatter':
+        return <ScatterChart data={chartData} config={chartConfig} />;
+      case 'heatmap':
+        // TODO: Create HeatmapChart component
+        return (
+          <div className="flex items-center justify-center h-full text-gray-400">
+            <p className="text-sm">Heatmap chart coming soon</p>
+          </div>
+        );
       default:
-        return <div>Unsupported chart type</div>;
+        return (
+          <div className="flex items-center justify-center h-full text-gray-400">
+            <p className="text-sm">Unsupported chart type: {widget.widget_type}</p>
+          </div>
+        );
     }
   };
 

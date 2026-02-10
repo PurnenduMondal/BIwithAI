@@ -1,18 +1,22 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { PaperAirplaneIcon, SparklesIcon, BellIcon, UserCircleIcon, Cog6ToothIcon, ArrowRightOnRectangleIcon, PlusIcon, CircleStackIcon } from '@heroicons/react/24/outline';
-import { analyticsApi } from '../api/analytics';
+import { PaperAirplaneIcon, SparklesIcon, BellIcon, UserCircleIcon, Cog6ToothIcon, ArrowRightOnRectangleIcon, PlusIcon, CircleStackIcon, Bars3Icon, ChatBubbleLeftRightIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { chatApi, ChatMessage as ApiChatMessage, ChatSession } from '../api/chat';
 import { useDataSources } from '../hooks/useDataSource';
 import { useAuth } from '../hooks/useAuth';
 import { Loader } from '../components/common/Loader';
+import { ChartWidget } from '../components/widgets/ChartWidget';
+import { TableWidget } from '../components/widgets/TableWidget';
+import { MetricCard } from '../components/widgets/MetricCard';
 import toast from 'react-hot-toast';
 
 interface Message {
   id: string;
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: Date;
-  data?: any;
+  widget_previews?: ApiChatMessage['widget_previews'];
+  dashboard_id?: string;
 }
 
 export const Home = () => {
@@ -20,7 +24,11 @@ export const Home = () => {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [selectedDataSourceId, setSelectedDataSourceId] = useState<string>('');
+  const [chatSessionId, setChatSessionId] = useState<string>('');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
+  const [isLoadingSessions, setIsLoadingSessions] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -28,6 +36,22 @@ export const Home = () => {
   const { data: dataSources, isLoading: isLoadingDataSources } = useDataSources();
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+
+  // Fetch chat sessions
+  useEffect(() => {
+    const fetchSessions = async () => {
+      setIsLoadingSessions(true);
+      try {
+        const response = await chatApi.listSessions(1, 50);
+        setChatSessions(response.sessions || response);
+      } catch (error) {
+        console.error('Failed to fetch chat sessions:', error);
+      } finally {
+        setIsLoadingSessions(false);
+      }
+    };
+    fetchSessions();
+  }, []);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -73,17 +97,42 @@ export const Home = () => {
     }
 
     try {
-      const response = await analyticsApi.nlpQuery(selectedDataSourceId, input);
+      // Create session if it doesn't exist
+      let sessionId = chatSessionId;
+      if (!sessionId) {
+        const session = await chatApi.createSession({
+          data_source_id: selectedDataSourceId,
+          title: 'New Chat',
+        });
+        sessionId = session.id;
+        setChatSessionId(sessionId);
+        refreshSessions();
+      }
+
+      const response = await chatApi.sendMessage(sessionId, {
+        content: input,
+      });
       
       const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
+        id: response.id,
         role: 'assistant',
-        content: response.message || 'Here are the results:',
-        timestamp: new Date(),
-        data: response.data || response,
+        content: response.content,
+        timestamp: new Date(response.created_at),
+        widget_previews: response.widget_previews,
+        dashboard_id: response.dashboard_id,
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
+      
+      // If dashboard was created, show success message
+      if (response.dashboard_id) {
+        toast.success('Dashboard created! Click "View Dashboard" to see it.', {
+          duration: 5000,
+        });
+      }
+      
+      // Refresh sessions to update message count
+      refreshSessions();
     } catch (error: any) {
       toast.error(error.message || 'Failed to process query');
       
@@ -125,8 +174,50 @@ export const Home = () => {
     'Analyze sales trends by month',
   ];
 
+  const refreshSessions = async () => {
+    try {
+      const response = await chatApi.listSessions(1, 50);
+      setChatSessions(response.sessions || response);
+    } catch (error) {
+      console.error('Failed to refresh sessions:', error);
+    }
+  };
+
   const handleSuggestionClick = (query: string) => {
     setInput(query);
+  };
+
+  const handleLoadSession = async (sessionId: string) => {
+    try {
+      setIsLoading(true);
+      const session = await chatApi.getSession(sessionId);
+      setChatSessionId(session.id);
+      setSelectedDataSourceId(session.data_source_id || '');
+      
+      // Convert messages to our format
+      const loadedMessages: Message[] = session.messages.map((msg) => ({
+        id: msg.id,
+        role: msg.role,
+        content: msg.content,
+        timestamp: new Date(msg.created_at),
+        widget_previews: msg.widget_previews,
+        dashboard_id: msg.dashboard_id,
+      }));
+      
+      setMessages(loadedMessages);
+      toast.success('Chat session loaded');
+    } catch (error) {
+      console.error('Failed to load session:', error);
+      toast.error('Failed to load chat session');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleNewChat = () => {
+    // Just clear the current session - new session will be created on first message
+    setChatSessionId('');
+    setMessages([]);
   };
 
   if (isLoadingDataSources) {
@@ -156,9 +247,11 @@ export const Home = () => {
   }
 
   return (
-    <div className="flex flex-col h-full bg-white">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between shadow-sm">
+    <div className="relative h-full bg-white">
+      {/* Main Content */}
+      <div className="flex flex-col w-full h-full">
+        {/* Header */}
+        <div className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between shadow-sm">
         <div className="flex items-center space-x-3">
           <SparklesIcon className="w-7 h-7 text-blue-600" />
           <div>
@@ -249,6 +342,17 @@ export const Home = () => {
               </div>
             )}
           </div>
+
+          {/* Toggle Sidebar Button */}
+          <button
+            onClick={() => setIsSidebarOpen(true)}
+            className={`p-1.5 text-gray-600 hover:text-gray-900 rounded-lg hover:bg-gray-100 transition-colors ${
+              isSidebarOpen ? 'invisible' : ''
+            }`}
+            title="Show chat history"
+          >
+            <Bars3Icon className="w-5 h-5" />
+          </button>
         </div>
       </div>
 
@@ -294,12 +398,88 @@ export const Home = () => {
                 >
                   <p className="whitespace-pre-wrap">{message.content}</p>
                   
-                  {/* Render data if available */}
-                  {message.data && (
-                    <div className="mt-3 p-3 bg-gray-50 rounded border border-gray-200">
-                      <pre className="text-xs overflow-x-auto">
-                        {JSON.stringify(message.data, null, 2)}
-                      </pre>
+                  {/* Render widget previews if available */}
+                  {message.widget_previews && message.widget_previews.length > 0 && (
+                    <div className="mt-4 space-y-4">
+                      {message.widget_previews.map((preview, idx) => (
+                        <div key={idx} className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                          <h4 className="font-semibold text-gray-900 mb-2">
+                            {preview.widget.title}
+                          </h4>
+                          {preview.widget.description && (
+                            <p className="text-sm text-gray-600 mb-3">
+                              {preview.widget.description}
+                            </p>
+                          )}
+                          {preview.widget.ai_reasoning && (
+                            <div className="mb-3 p-2 bg-blue-50 rounded text-xs text-blue-900">
+                              <strong>AI Reasoning:</strong> {preview.widget.ai_reasoning}
+                            </div>
+                          )}
+                          
+                          {/* Render widget based on type */}
+                          {['bar', 'line', 'pie', 'area', 'scatter', 'heatmap'].includes(preview.widget.widget_type) && (
+                            <div className="bg-white p-4 rounded border border-gray-300 h-80">
+                              <ChartWidget
+                                widget={{
+                                  id: preview.widget.id,
+                                  widget_type: preview.widget.widget_type as any,
+                                  title: preview.widget.title,
+                                  query_config: preview.widget.query_config,
+                                  chart_config: preview.widget.chart_config,
+                                  position: preview.widget.position as { x: number; y: number; w: number; h: number; },
+                                  dashboard_id: message.dashboard_id || '',
+                                } as any}
+                                data={preview.data}
+                              />
+                            </div>
+                          )}
+                            
+                          {preview.widget.widget_type === 'metric' && (
+                            <div className="bg-white p-4 rounded border border-gray-300">
+                              <MetricCard
+                                widget={{
+                                  id: preview.widget.id,
+                                  widget_type: 'metric',
+                                  title: preview.widget.title,
+                                  query_config: preview.widget.query_config,
+                                  chart_config: preview.widget.chart_config,
+                                  position: preview.widget.position as { x: number; y: number; w: number; h: number; },
+                                  dashboard_id: message.dashboard_id || '',
+                                } as any}
+                                data={preview.data}
+                              />
+                            </div>
+                          )}
+                            
+                          {preview.widget.widget_type === 'table' && (
+                            <div className="bg-white p-4 rounded border border-gray-300 h-80 overflow-auto">
+                              <TableWidget
+                                widget={{
+                                  id: preview.widget.id,
+                                  widget_type: 'table',
+                                  title: preview.widget.title,
+                                  query_config: preview.widget.query_config,
+                                  chart_config: preview.widget.chart_config,
+                                  position: preview.widget.position as { x: number; y: number; w: number; h: number; },
+                                  dashboard_id: message.dashboard_id || '',
+                                } as any}
+                                data={preview.data}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                      
+                      {/* View Dashboard Button */}
+                      {message.dashboard_id && (
+                        <button
+                          onClick={() => navigate(`/dashboards/${message.dashboard_id}`)}
+                          className="w-full mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                        >
+                          View Full Dashboard
+                        </button>
+                      )}
                     </div>
                   )}
                   
@@ -355,6 +535,76 @@ export const Home = () => {
           <p className="text-xs text-gray-500 mt-2 text-center">
             Press Enter to send, Shift+Enter for new line
           </p>
+        </div>
+      </div>
+      </div>
+
+      {/* Collapsible Sidebar - Right Side - Overlay */}
+      <div
+        className={`fixed top-0 right-0 h-full bg-gray-900 text-white transition-all duration-300 ease-in-out z-50 shadow-2xl ${
+          isSidebarOpen ? 'w-64' : 'w-0'
+        } overflow-hidden flex flex-col`}
+      >
+        <div className="p-4 border-b border-gray-700 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <ChatBubbleLeftRightIcon className="w-5 h-5" />
+            <h2 className="font-semibold">Chat History</h2>
+          </div>
+          <button
+            onClick={() => setIsSidebarOpen(false)}
+            className="p-1 hover:bg-gray-800 rounded"
+          >
+            <XMarkIcon className="w-5 h-5" />
+          </button>
+        </div>
+
+        <button
+          onClick={handleNewChat}
+          className="m-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg flex items-center justify-center gap-2 transition-colors"
+          disabled={!selectedDataSourceId}
+        >
+          <PlusIcon className="w-5 h-5" />
+          New Chat
+        </button>
+
+        <div className="flex-1 overflow-y-auto">
+          {isLoadingSessions ? (
+            <div className="flex items-center justify-center p-4">
+              <Loader />
+            </div>
+          ) : (
+            <div className="space-y-1 px-2">
+              {chatSessions.map((session) => (
+                <button
+                  key={session.id}
+                  onClick={() => handleLoadSession(session.id)}
+                  className={`w-full text-left px-3 py-2 rounded-lg hover:bg-gray-800 transition-colors ${
+                    session.id === chatSessionId ? 'bg-gray-800' : ''
+                  }`}
+                >
+                  <div className="flex items-start gap-2">
+                    <ChatBubbleLeftRightIcon className="w-4 h-4 mt-1 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">
+                        {session.title || 'Untitled Chat'}
+                      </p>
+                      <p className="text-xs text-gray-400 truncate">
+                        {new Date(session.last_message_at || session.created_at).toLocaleDateString()}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {session.message_count} messages
+                      </p>
+                    </div>
+                  </div>
+                </button>
+              ))}
+              {chatSessions.length === 0 && (
+                <p className="text-sm text-gray-400 text-center py-4">
+                  No previous chats
+                </p>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>

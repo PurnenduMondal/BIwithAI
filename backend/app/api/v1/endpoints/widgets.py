@@ -73,10 +73,20 @@ async def create_widget(
             detail="Dashboard not found"
         )
     
-    # Create widget
+    # Create widget - handle legacy format conversion
+    widget_dict = widget_data.dict(exclude_unset=True)
+    
+    # Convert legacy 'chart' type to specific chart type
+    if widget_dict.get('widget_type') == 'chart' and widget_dict.get('config', {}).get('chart_type'):
+        widget_dict['widget_type'] = widget_dict['config']['chart_type']
+    
+    # Remove legacy config field if new fields are present
+    if 'query_config' in widget_dict or 'chart_config' in widget_dict:
+        widget_dict.pop('config', None)
+    
     widget = Widget(
         dashboard_id=dashboard_id,
-        **widget_data.dict()
+        **widget_dict
     )
     
     db.add(widget)
@@ -133,6 +143,15 @@ async def update_widget(
         )
     
     update_dict = update_data.dict(exclude_unset=True)
+    
+    # Convert legacy 'chart' type to specific chart type if needed
+    if update_dict.get('widget_type') == 'chart' and update_dict.get('config', {}).get('chart_type'):
+        update_dict['widget_type'] = update_dict['config']['chart_type']
+    
+    # Remove legacy config field if new fields are present
+    if 'query_config' in update_dict or 'chart_config' in update_dict:
+        update_dict.pop('config', None)
+    
     for field, value in update_dict.items():
         setattr(widget, field, value)
     
@@ -223,8 +242,14 @@ async def get_widget_data(
     df = pd.read_parquet(dataset.storage_path)
     
     # Execute query based on widget config
+    # Merge query_config and chart_config for backward compatibility
+    widget_config = {
+        **(widget.query_config or {}),
+        **(widget.chart_config or {}),
+    }
+    
     executor = QueryExecutor()
-    result_data = await executor.execute_widget_query(df, widget.config, widget.widget_type)
+    result_data = await executor.execute_widget_query(df, widget_config, widget.widget_type)
     
     # Convert to JSON-safe format using pandas built-in serialization
     # to_json() handles NaN, Inf, and -Inf automatically

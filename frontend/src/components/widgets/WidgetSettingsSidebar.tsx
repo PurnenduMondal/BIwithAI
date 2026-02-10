@@ -9,14 +9,28 @@ interface WidgetSettingsSidebarProps {
   dashboardId: string;
   isOpen: boolean;
   onClose: () => void;
+  onSave?: () => void;
 }
 
-export const WidgetSettingsSidebar = ({ widget, dashboardId, isOpen, onClose }: WidgetSettingsSidebarProps) => {
+export const WidgetSettingsSidebar = ({ widget, dashboardId, isOpen, onClose, onSave }: WidgetSettingsSidebarProps) => {
   const isNewWidget = !widget;
-  const [widgetType, setWidgetType] = useState<string>(widget?.widget_type || 'chart');
+  const [widgetType, setWidgetType] = useState<string>(widget?.widget_type || 'bar');
   const [dataSourceId, setDataSourceId] = useState<string>(widget?.data_source_id || '');
   const [title, setTitle] = useState(widget?.title || '');
-  const [config, setConfig] = useState(widget?.config || {});
+  
+  // Merge query_config and chart_config into single config for editing
+  const [config, setConfig] = useState(() => {
+    if (!widget) return {};
+    return {
+      ...widget.query_config,
+      ...widget.chart_config,
+    };
+  });
+  
+  // AI generation info (read-only)
+  const isAIGenerated = widget?.generated_by_ai || false;
+  const aiReasoning = widget?.ai_reasoning || null;
+  const generationPrompt = widget?.generation_prompt || null;
   
   const { data: dataSources } = useDataSources();
   const createWidget = useCreateWidget(dashboardId);
@@ -27,9 +41,13 @@ export const WidgetSettingsSidebar = ({ widget, dashboardId, isOpen, onClose }: 
       setWidgetType(widget.widget_type);
       setDataSourceId(widget.data_source_id || '');
       setTitle(widget.title);
-      setConfig(widget.config || {});
+      // Merge query_config and chart_config for editing
+      setConfig({
+        ...widget.query_config,
+        ...widget.chart_config,
+      });
     } else {
-      setWidgetType('chart');
+      setWidgetType('bar');
       setDataSourceId('');
       setTitle('');
       setConfig({});
@@ -39,13 +57,8 @@ export const WidgetSettingsSidebar = ({ widget, dashboardId, isOpen, onClose }: 
   // Set default config values based on widget type
   useEffect(() => {
     if (isNewWidget) {
-      if (widgetType === 'chart') {
-        setConfig((prev: any) => ({
-          ...prev,
-          aggregation: prev.aggregation || 'sum',
-          chart_type: prev.chart_type || 'bar',
-        }));
-      } else if (widgetType === 'metric') {
+      const chartTypes = ['line', 'bar', 'pie', 'area', 'scatter', 'heatmap'];
+      if (chartTypes.includes(widgetType) || widgetType === 'metric' || widgetType === 'gauge') {
         setConfig((prev: any) => ({
           ...prev,
           aggregation: prev.aggregation || 'sum',
@@ -60,6 +73,24 @@ export const WidgetSettingsSidebar = ({ widget, dashboardId, isOpen, onClose }: 
   }, [widgetType, isNewWidget]);
 
   const handleSave = () => {
+    // Split config into query_config and chart_config
+    const queryFields = ['filters', 'aggregation', 'date_column', 'date_range', 
+                         'comparison_period', 'limit', 'sort_by', 'group_by'];
+    const chartFields = ['chart_type', 'x_axis', 'y_axis', 'colors', 'show_legend', 
+                        'show_grid', 'format', 'columns', 'min_value', 'max_value', 'metric', 
+                        'prefix', 'suffix'];
+    
+    const query_config: any = {};
+    const chart_config: any = {};
+    
+    Object.entries(config).forEach(([key, value]) => {
+      if (queryFields.includes(key)) {
+        query_config[key] = value;
+      } else if (chartFields.includes(key)) {
+        chart_config[key] = value;
+      }
+    });
+    
     if (isNewWidget) {
       // Calculate position for new widget (place at bottom)
       const position = {
@@ -73,11 +104,25 @@ export const WidgetSettingsSidebar = ({ widget, dashboardId, isOpen, onClose }: 
         widget_type: widgetType as any,
         title,
         position,
-        config,
+        query_config,
+        chart_config,
         data_source_id: dataSourceId || undefined,
+      }, {
+        onSuccess: () => {
+          if (onSave) onSave();
+        }
       });
     } else {
-      updateWidget.mutate({ title, config });
+      updateWidget.mutate({ 
+        widget_type: widgetType as any,
+        title, 
+        query_config,
+        chart_config 
+      }, {
+        onSuccess: () => {
+          if (onSave) onSave();
+        }
+      });
     }
     onClose();
   };
@@ -133,6 +178,32 @@ export const WidgetSettingsSidebar = ({ widget, dashboardId, isOpen, onClose }: 
 
         {/* Content */}
         <div className="px-6 py-4 space-y-6">
+          {/* AI Generation Info (Read-only) */}
+          {isAIGenerated && (
+            <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
+              <div className="flex items-start">
+                <div className="flex-shrink-0">
+                  <svg className="w-5 h-5 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div className="ml-3 flex-1">
+                  <h3 className="text-sm font-medium text-blue-800">AI-Generated Widget</h3>
+                  {generationPrompt && (
+                    <p className="mt-1 text-xs text-blue-700">
+                      <span className="font-medium">Prompt:</span> {generationPrompt}
+                    </p>
+                  )}
+                  {aiReasoning && (
+                    <p className="mt-1 text-xs text-blue-700">
+                      <span className="font-medium">AI Reasoning:</span> {aiReasoning}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Basic Settings */}
           <div>
             <h3 className="text-sm font-semibold text-gray-900 mb-3">Basic Settings</h3>
@@ -144,14 +215,23 @@ export const WidgetSettingsSidebar = ({ widget, dashboardId, isOpen, onClose }: 
                 <select
                   value={widgetType}
                   onChange={(e) => setWidgetType(e.target.value)}
-                  disabled={!isNewWidget}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="chart">Chart</option>
-                  <option value="metric">Metric</option>
-                  <option value="table">Table</option>
-                  <option value="text">Text</option>
-                  <option value="ai_insight">AI Insight</option>
+                  <optgroup label="Charts">
+                    <option value="bar">Bar Chart</option>
+                    <option value="line">Line Chart</option>
+                    <option value="pie">Pie Chart</option>
+                    <option value="area">Area Chart</option>
+                    <option value="scatter">Scatter Plot</option>
+                    <option value="heatmap">Heatmap</option>
+                  </optgroup>
+                  <optgroup label="Metrics">
+                    <option value="metric">Metric Card</option>
+                    <option value="gauge">Gauge</option>
+                  </optgroup>
+                  <optgroup label="Other">
+                    <option value="table">Table</option>
+                  </optgroup>
                 </select>
               </div>
 
@@ -190,26 +270,11 @@ export const WidgetSettingsSidebar = ({ widget, dashboardId, isOpen, onClose }: 
           </div>
 
           {/* Chart-specific Settings */}
-          {widgetType === 'chart' && (
+          {['line', 'bar', 'pie', 'area', 'scatter', 'heatmap'].includes(widgetType) && (
             <>
               <div>
                 <h3 className="text-sm font-semibold text-gray-900 mb-3">Chart Configuration</h3>
                 <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Chart Type
-                    </label>
-                    <select
-                      value={config.chart_type || 'bar'}
-                      onChange={(e) => handleConfigChange('chart_type', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="bar">Bar Chart</option>
-                      <option value="line">Line Chart</option>
-                      <option value="pie">Pie Chart</option>
-                      <option value="area">Area Chart</option>
-                    </select>
-                  </div>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -327,8 +392,8 @@ export const WidgetSettingsSidebar = ({ widget, dashboardId, isOpen, onClose }: 
             </>
           )}
 
-          {/* Metric-specific Settings */}
-          {widgetType === 'metric' && (
+          {/* Metric and Gauge Settings */}
+          {(widgetType === 'metric' || widgetType === 'gauge') && (
             <div>
               <h3 className="text-sm font-semibold text-gray-900 mb-3">Metric Configuration</h3>
               <div className="space-y-4">
@@ -369,45 +434,58 @@ export const WidgetSettingsSidebar = ({ widget, dashboardId, isOpen, onClose }: 
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Date Column (Optional)
+                    Prefix (optional)
                   </label>
-                  <select
-                    value={config.date_column || ''}
-                    onChange={(e) => handleConfigChange('date_column', e.target.value)}
+                  <input
+                    type="text"
+                    value={config.prefix || ''}
+                    onChange={(e) => handleConfigChange('prefix', e.target.value)}
+                    placeholder="e.g., $, ₹, €"
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">None</option>
-                    {availableColumns.map((col: string) => (
-                      <option key={col} value={col}>
-                        {col}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="mt-1 text-xs text-gray-500">
-                    Required for period comparison
-                  </p>
+                  />
+                  <p className="mt-1 text-xs text-gray-500">Add a prefix character like $, ₹, € before the value</p>
                 </div>
 
-                {config.date_column && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Compare With
-                    </label>
-                    <select
-                      value={config.comparison_period || ''}
-                      onChange={(e) => handleConfigChange('comparison_period', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="">No Comparison</option>
-                      <option value="previous_week">Previous Week</option>
-                      <option value="previous_month">Previous Month</option>
-                      <option value="previous_quarter">Previous Quarter</option>
-                      <option value="previous_year">Previous Year</option>
-                    </select>
-                    <p className="mt-1 text-xs text-gray-500">
-                      Shows trend vs selected period
-                    </p>
-                  </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Suffix (optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={config.suffix || ''}
+                    onChange={(e) => handleConfigChange('suffix', e.target.value)}
+                    placeholder="e.g., %, K, M"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">Add a suffix character like %, K, M after the value</p>
+                </div>
+                
+                {/* Gauge-specific settings */}
+                {widgetType === 'gauge' && (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Minimum Value
+                      </label>
+                      <input
+                        type="number"
+                        value={config.min_value || 0}
+                        onChange={(e) => handleConfigChange('min_value', Number(e.target.value))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Maximum Value
+                      </label>
+                      <input
+                        type="number"
+                        value={config.max_value || 100}
+                        onChange={(e) => handleConfigChange('max_value', Number(e.target.value))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </>
                 )}
               </div>
             </div>
