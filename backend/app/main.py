@@ -11,6 +11,7 @@ from app.config import settings
 from app.api.v1.router import api_router
 from app.core.exceptions import AppException
 from app.middleware.rate_limit import RateLimitMiddleware
+from app.middleware.tenant_resolver import TenantResolverMiddleware
 from app.db.session import engine
 from app.db.base import Base
 
@@ -57,12 +58,14 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
+    allow_origin_regex=settings.CORS_ORIGIN_REGEX,  # Support subdomain patterns (*.localhost)
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 app.add_middleware(GZipMiddleware, minimum_size=1000)
+app.add_middleware(TenantResolverMiddleware)  # Resolve tenant/organization context
 app.add_middleware(RateLimitMiddleware)
 
 # Exception handlers

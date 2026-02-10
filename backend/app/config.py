@@ -24,7 +24,12 @@ class Settings(BaseSettings):
     CORS_ORIGINS: List[str] = [
         "http://localhost:3000",
         "http://localhost:5173",
+        # Support for subdomain-based multi-tenancy (*.localhost pattern)
+        # Note: Add specific subdomains or use allow_origin_regex in production
     ]
+    # For multi-tenant subdomain support, you can set this regex pattern:
+    # CORS_ORIGIN_REGEX: str = r"^https?://([\w-]+\.)?localhost(:\d+)?$"
+    CORS_ORIGIN_REGEX: Optional[str] = r"^https?://([\w-]+\.)?localhost(:\d+)?$"
     ALLOWED_ORIGINS: Optional[str] = None  # Comma-separated string alternative to CORS_ORIGINS
     
     # Database

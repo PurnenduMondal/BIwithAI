@@ -1,5 +1,6 @@
 import axios, { AxiosError, type AxiosRequestConfig } from 'axios';
 import { useAuthStore } from '../store/authStore';
+import { getCurrentSubdomain } from '../utils/tenant';
 
 const API_BASE_URL = 'http://localhost:8000';
 
@@ -10,13 +11,21 @@ export const apiClient = axios.create({
   },
 });
 
-// Request interceptor to add auth token
+// Request interceptor to add auth token and organization subdomain
 apiClient.interceptors.request.use(
   (config) => {
+    // Add auth token
     const token = useAuthStore.getState().token;
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    
+    // Add organization subdomain for multi-tenant support
+    const subdomain = getCurrentSubdomain();
+    if (subdomain) {
+      config.headers['X-Organization-Subdomain'] = subdomain;
+    }
+    
     return config;
   },
   (error) => Promise.reject(error)
