@@ -16,9 +16,12 @@ export interface CorrelationParams {
 
 export const analyticsApi = {
   nlpQuery: async (dataSourceId: string, query: string): Promise<any> => {
-    const { data } = await apiClient.post(
-      `/api/v1/analytics/query?data_source_id=${dataSourceId}&query=${encodeURIComponent(query)}`
-    );
+    const { data } = await apiClient.post('/api/v1/analytics/query', null, {
+      params: {
+        data_source_id: dataSourceId,
+        query: query,
+      },
+    });
     return data;
   },
 

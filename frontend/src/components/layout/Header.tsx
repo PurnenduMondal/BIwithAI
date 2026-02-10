@@ -26,27 +26,27 @@ export const Header = () => {
 
   return (
     <header className="bg-white shadow-sm border-b border-gray-200">
-      <div className="flex items-center justify-between px-6 py-4">
+      <div className="flex items-center justify-between px-6 py-2">
         <div className="flex items-center">
-          <h1 className="text-xl font-semibold text-gray-800">
+          <h1 className="text-lg font-semibold text-gray-800">
             BI Dashboard Generator
           </h1>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
           {/* Notifications */}
-          <button className="p-2 text-gray-600 hover:text-gray-900 rounded-lg hover:bg-gray-100 relative">
-            <BellIcon className="w-6 h-6" />
-            <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+          <button className="p-1.5 text-gray-600 hover:text-gray-900 rounded-lg hover:bg-gray-100 relative">
+            <BellIcon className="w-5 h-5" />
+            <span className="absolute top-0.5 right-0.5 w-2 h-2 bg-red-500 rounded-full"></span>
           </button>
 
           {/* User Menu */}
           <div className="relative" ref={menuRef}>
             <button
               onClick={() => setIsMenuOpen(!isMenuOpen)}
-              className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-100"
+              className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-gray-100"
             >
-              <UserCircleIcon className="w-8 h-8 text-gray-600" />
+              <UserCircleIcon className="w-7 h-7 text-gray-600" />
               <div className="text-left">
                 <p className="text-sm font-medium text-gray-900">
                   {user?.full_name || user?.email}

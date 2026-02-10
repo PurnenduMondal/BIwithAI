@@ -6,6 +6,7 @@ import { MainLayout } from './components/layout/MainLayout';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { LoginForm } from './components/auth/LoginForm';
 import { RegisterForm } from './components/auth/RegisterForm';
+import { Home } from './pages/Home';
 import { DashboardList } from './pages/DashboardList';
 import { DashboardView } from './pages/DashboardView';
 import { DashboardCreate } from './pages/DashboardCreate';
@@ -36,7 +37,7 @@ function App() {
           {/* Protected Routes */}
           <Route element={<ProtectedRoute />}>
             <Route element={<MainLayout />}>
-              <Route path="/" element={<Navigate to="/dashboards" replace />} />
+              <Route path="/" element={<Home />} />
               
               {/* Dashboards */}
               <Route path="/dashboards" element={<DashboardList />} />
@@ -56,7 +57,7 @@ function App() {
           </Route>
 
           {/* 404 */}
-          <Route path="*" element={<Navigate to="/dashboards" replace />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
         </BrowserRouter>
 

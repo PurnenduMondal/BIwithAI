@@ -347,30 +347,32 @@ Return ONLY a valid JSON array of insights, no other text or markdown."""
     ) -> Dict[str, Any]:
         """Process natural language query and generate response"""
         
-        prompt = f"""You are a data analyst assistant. A user has asked a question about their data.
+        prompt = f"""
+        You are a data analyst assistant. A user has asked a question about their data.
 
-User Question: "{query}"
+        User Question: "{query}"
 
-Available Data Schema:
-{json.dumps(schema, indent=2, default=str)}
+        Available Data Schema:
+        {json.dumps(schema, indent=2, default=str)}
 
-Sample Data (first 5 rows):
-{df.head().to_json(orient='records', indent=2)}
+        Sample Data (first 5 rows):
+        {df.head().to_json(orient='records', indent=2)}
 
-Your task:
-1. Interpret the user's question
-2. Determine what analysis or visualization would best answer it
-3. Provide a structured response
+        Your task:
+        1. Interpret the user's question
+        2. Determine what analysis or visualization would best answer it
+        3. Provide a structured response
 
-Return a JSON object with:
-- interpretation: What the user is asking for
-- recommended_visualization: Best chart type (line, bar, pie, scatter, table, metric_card)
-- columns_needed: Array of column names needed
-- aggregation: Type of aggregation if needed (sum, avg, count, min, max)
-- filters: Any filters to apply
-- insight: A brief answer to their question based on the data
+        Return a JSON object with:
+        - interpretation: What the user is asking for
+        - recommended_visualization: Best chart type (line, bar, pie, scatter, table, metric_card)
+        - columns_needed: Array of column names needed
+        - aggregation: Type of aggregation if needed (sum, avg, count, min, max)
+        - filters: Any filters to apply
+        - insight: A brief answer to their question based on the data
 
-Return ONLY valid JSON, no other text."""
+        Return ONLY valid JSON, no other text.
+        """
 
         try:
             response = self.client.messages.create(

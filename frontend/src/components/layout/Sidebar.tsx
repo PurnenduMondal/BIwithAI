@@ -6,8 +6,6 @@ import {
   CircleStackIcon,
   BellAlertIcon,
   Cog6ToothIcon,
-  ChevronDoubleLeftIcon,
-  ChevronDoubleRightIcon,
 } from '@heroicons/react/24/outline';
 
 export const Sidebar = () => {
@@ -22,10 +20,14 @@ export const Sidebar = () => {
   ];
 
   return (
-    <aside className={`${isCollapsed ? 'w-20' : 'w-64'} bg-gray-900 text-white transition-all duration-300`}>
+    <aside 
+      className={`${isCollapsed ? 'w-20' : 'w-64'} bg-gray-900 text-white transition-all duration-300 fixed left-0 top-0 h-full z-50`}
+      onMouseEnter={() => setIsCollapsed(false)}
+      onMouseLeave={() => setIsCollapsed(true)}
+    >
       <div className="flex items-center justify-center h-16 border-b border-gray-800">
-        {!isCollapsed && <h1 className="text-xl font-bold">BI Dashboard</h1>}
-        {isCollapsed && <h1 className="text-xl font-bold">BI</h1>}
+        {!isCollapsed && <h1 className={`text-xl font-bold transition-opacity duration-200 ${isCollapsed ? 'opacity-0' : 'opacity-100 delay-500'}`}>From AI to BI</h1>}
+        {isCollapsed && <h1 className="text-xl font-bold">AB</h1>}
       </div>
 
       <nav className="mt-8">
@@ -44,23 +46,11 @@ export const Sidebar = () => {
               title={isCollapsed ? item.name : ''}
             >
               <item.icon className={`w-5 h-5 ${!isCollapsed && 'mr-3'}`} />
-              {!isCollapsed && item.name}
+              {!isCollapsed && <span className={`transition-opacity duration-200 ${isCollapsed ? 'opacity-0' : 'opacity-100 delay-500'}`}>{item.name}</span>}
             </NavLink>
           ))}
         </div>
       </nav>
-
-      <button
-        onClick={() => setIsCollapsed(!isCollapsed)}
-        className="absolute bottom-8 left-4 p-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition"
-        title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-      >
-        {isCollapsed ? (
-          <ChevronDoubleRightIcon className="w-5 h-5" />
-        ) : (
-          <ChevronDoubleLeftIcon className="w-5 h-5" />
-        )}
-      </button>
     </aside>
   );
 };
