@@ -87,9 +87,24 @@ class QueryExecutor:
             }
         
         try:
+            df = df.copy()
+            
+            # Check if x_axis is a date column and group by month
+            try:
+                # Try to convert to datetime
+                test_date = pd.to_datetime(df[x_axis], errors='coerce')
+                # If more than 50% of values are valid dates, treat as date column
+                if test_date.notna().sum() / len(df) > 0.5:
+                    # Convert to datetime and transform to year-month format (e.g., "2024-01")
+                    df[x_axis] = pd.to_datetime(df[x_axis]).dt.to_period('M').astype(str)
+                    logger.info(f"Detected date column, grouping by month")
+            except Exception as e:
+                logger.error(f"Error detecting date column: {str(e)}", exc_info=True)
+                # Not a date column, continue as normal
+                pass
+            
             # Clean up x_axis values (remove leading/trailing whitespace from strings)
             if df[x_axis].dtype == 'object':
-                df = df.copy()
                 df[x_axis] = df[x_axis].astype(str).str.strip()
             
             # Handle percentage aggregation separately
