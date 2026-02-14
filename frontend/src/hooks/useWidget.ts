@@ -7,8 +7,9 @@ export const useWidgets = (dashboardId: string) => {
     queryKey: ['widgets', dashboardId],
     queryFn: () => widgetApi.list(dashboardId),
     enabled: !!dashboardId,
-    refetchOnMount: 'always',
-    staleTime: 0,
+    staleTime: 5000, // 5 seconds - shorter to allow quicker updates after mutations
+    refetchOnWindowFocus: false,
+    refetchOnMount: 'always', // Always refetch on mount to get latest data
   });
 };
 
@@ -26,9 +27,16 @@ export const useCreateWidget = (dashboardId: string) => {
   return useMutation({
     mutationFn: (widgetData: CreateWidgetData) =>
       widgetApi.create(dashboardId, widgetData),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['dashboard', dashboardId] });
-      queryClient.invalidateQueries({ queryKey: ['widgets', dashboardId] });
+    onSuccess: async () => {
+      // Invalidate queries - React Query will refetch automatically based on component usage
+      await queryClient.invalidateQueries({ 
+        queryKey: ['dashboard', dashboardId],
+        refetchType: 'active' 
+      });
+      await queryClient.invalidateQueries({ 
+        queryKey: ['widgets', dashboardId],
+        refetchType: 'active'
+      });
       toast.success('Widget created successfully!');
     },
     onError: (error: any) => {
@@ -43,15 +51,24 @@ export const useUpdateWidget = (id: string) => {
   return useMutation({
     mutationFn: (widgetData: Partial<CreateWidgetData>) =>
       widgetApi.update(id, widgetData),
-    onSuccess: (data) => {
-      // Invalidate and refetch widget data
-      queryClient.invalidateQueries({ queryKey: ['widget', id] });
-      queryClient.invalidateQueries({ queryKey: ['widgetData', id] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard', data.dashboard_id] });
-      queryClient.invalidateQueries({ queryKey: ['widgets', data.dashboard_id] });
-      
-      // Force refetch widget data
-      queryClient.refetchQueries({ queryKey: ['widgetData', id] });
+    onSuccess: async (data) => {
+      // Invalidate queries - React Query will refetch automatically based on component usage
+      await queryClient.invalidateQueries({ 
+        queryKey: ['widget', id],
+        refetchType: 'active'
+      });
+      await queryClient.invalidateQueries({ 
+        queryKey: ['widgetData', id],
+        refetchType: 'active'
+      });
+      await queryClient.invalidateQueries({ 
+        queryKey: ['dashboard', data.dashboard_id],
+        refetchType: 'active'
+      });
+      await queryClient.invalidateQueries({ 
+        queryKey: ['widgets', data.dashboard_id],
+        refetchType: 'active'
+      });
       
       toast.success('Widget updated successfully!');
     },
@@ -66,9 +83,15 @@ export const useDeleteWidget = () => {
 
   return useMutation({
     mutationFn: widgetApi.delete,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['widgets'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ 
+        queryKey: ['widgets'],
+        refetchType: 'active'
+      });
+      await queryClient.invalidateQueries({ 
+        queryKey: ['dashboard'],
+        refetchType: 'active'
+      });
       toast.success('Widget deleted successfully!');
     },
     onError: (error: any) => {

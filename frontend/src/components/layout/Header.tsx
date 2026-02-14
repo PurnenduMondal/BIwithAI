@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { useNotifications } from '../../contexts/NotificationContext';
 import { apiClient } from '../../api/client';
+import { getCurrentSubdomain } from '../../utils/tenant';
 import toast from 'react-hot-toast';
 import {
   BellIcon,
@@ -10,6 +11,7 @@ import {
   ArrowRightOnRectangleIcon,
   XMarkIcon,
   ArrowDownTrayIcon,
+  BuildingOfficeIcon,
 } from '@heroicons/react/24/outline';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -20,6 +22,10 @@ export const Header = () => {
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const notificationRef = useRef<HTMLDivElement>(null);
+
+  // Get current organization based on subdomain
+  const currentSubdomain = getCurrentSubdomain();
+  const currentOrg = user?.organizations?.find(org => org.subdomain === currentSubdomain);
 
   const handleDownload = async (url: string, filename: string) => {
     try {
@@ -58,10 +64,16 @@ export const Header = () => {
   return (
     <header className="bg-white shadow-sm border-b border-gray-200">
       <div className="flex items-center justify-between px-6 py-2">
-        <div className="flex items-center">
+        <div className="flex items-center gap-4">
           <h1 className="text-lg font-semibold text-gray-800">
             BI Dashboard Generator
           </h1>
+          {currentOrg && (
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg border border-blue-200">
+              <BuildingOfficeIcon className="w-4 h-4" />
+              <span className="text-sm font-medium">{currentOrg.org_name}</span>
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-3">
@@ -176,6 +188,26 @@ export const Header = () => {
             {isMenuOpen && (
               <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg ring-1 ring-black ring-opacity-5 z-50">
                 <div className="py-1">
+                  {currentOrg && (
+                    <div className="px-4 py-2 border-b border-gray-100">
+                      <p className="text-xs text-gray-500 uppercase tracking-wider">Organization</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <BuildingOfficeIcon className="w-4 h-4 text-gray-400" />
+                        <p className="text-sm font-medium text-gray-900">{currentOrg.org_name}</p>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-0.5 capitalize">Role: {currentOrg.role}</p>
+                    </div>
+                  )}
+                  {user?.organizations && user.organizations.length > 1 && (
+                    <a
+                      href="/select-organization"
+                      className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                      onClick={() => setIsMenuOpen(false)}
+                    >
+                      <BuildingOfficeIcon className="w-5 h-5 mr-3" />
+                      Switch Organization
+                    </a>
+                  )}
                   <a
                     href="/settings"
                     className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"

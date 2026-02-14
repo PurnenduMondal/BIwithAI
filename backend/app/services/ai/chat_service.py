@@ -513,9 +513,18 @@ Return JSON with:
                     widget_type=widget.widget_type
                 )
                 
-                # Extract data from the result dict (already JSON-safe from query_executor)
-                # preview_result is a dict with 'data', 'columns', 'metadata' keys
-                preview_data = preview_result.get('data', [])
+                logger.info(f"Widget {widget.id} ({widget.widget_type}): merged_config={merged_config}")
+                logger.info(f"Widget {widget.id}: preview_result={preview_result}")
+                
+                # Extract data from the result dict
+                # For metric/gauge widgets, the entire result IS the data (contains 'value', 'metric', 'aggregation')
+                # For other widgets, extract the 'data' key (contains array of records)
+                if widget.widget_type in ['metric', 'gauge']:
+                    preview_data = preview_result
+                else:
+                    preview_data = preview_result.get('data', [])
+                
+                logger.info(f"Widget {widget.id}: preview_data={preview_data}")
                 
                 widget_previews.append({
                     "widget": {
@@ -564,30 +573,15 @@ Return JSON with:
         intent: Dict,
         context: List[Dict]
     ) -> Dict[str, Any]:
-        """Handle dashboard refinement request"""
-        # Get most recent dashboard from session
-        result = await self.db.execute(
-            select(DashboardGeneration)
-            .where(DashboardGeneration.session_id == session.id)
-            .order_by(desc(DashboardGeneration.created_at))
+        """Handle dashboard refinement request - treats it as a new dashboard generation"""
+        # For now, treat refinement like a new dashboard generation with context
+        # This ensures widgets are actually created and previewed
+        return await self._handle_dashboard_generation(
+            session=session,
+            user_message=user_message,
+            intent=intent,
+            context=context
         )
-        recent_gen = result.scalar_one_or_none()
-        
-        if not recent_gen:
-            return {
-                "content": "I don't see any dashboards from our conversation yet. Would you like me to create one?",
-                "message_type": "text"
-            }
-        
-        return {
-            "content": f"I'll refine the dashboard based on your request: '{user_message}'",
-            "message_type": "text",
-            "meta_data": {
-                "action_required": "refine_dashboard",
-                "dashboard_id": str(recent_gen.dashboard_id),
-                "query": user_message
-            }
-        }
     
     async def _handle_question(
         self,

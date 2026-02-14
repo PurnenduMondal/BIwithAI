@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr, Field, validator
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 from uuid import UUID
 
@@ -34,5 +34,15 @@ class UserInDB(UserBase):
     class Config:
         from_attributes = True
 
+class OrganizationMembership(BaseModel):
+    """Simplified organization info for user response"""
+    org_id: UUID
+    org_name: str
+    subdomain: Optional[str]
+    role: str
+    
+    class Config:
+        from_attributes = True
+
 class UserResponse(UserInDB):
-    pass
+    organizations: List[OrganizationMembership] = []

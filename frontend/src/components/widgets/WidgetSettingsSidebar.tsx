@@ -1,8 +1,105 @@
-import { useState, useEffect } from 'react';
-import { XMarkIcon } from '@heroicons/react/24/outline';
+import { useState, useEffect, useRef } from 'react';
+import { XMarkIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
 import { type Widget } from '../../types';
-import { useUpdateWidget, useCreateWidget } from '../../hooks/useWidget';
+import { useUpdateWidget, useCreateWidget, useWidgets } from '../../hooks/useWidget';
 import { useDataSources } from '../../hooks/useDataSource';
+
+// Custom Dropdown Component for Column Selection
+interface ColumnDropdownProps {
+  value: string;
+  onChange: (value: string) => void;
+  options: Array<{ name: string; semantic_type: string; unique_count: number }>;
+  placeholder?: string;
+  className?: string;
+  size?: 'sm' | 'md';
+}
+
+const ColumnDropdown = ({ value, onChange, options, placeholder = 'Select column...', className = '', size = 'md' }: ColumnDropdownProps) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen]);
+
+  const selectedOption = options.find(opt => opt.name === value);
+  const buttonSizeClasses = size === 'sm' ? 'px-2 py-1.5 text-xs' : 'px-3 py-2 text-sm';
+  const optionSizeClasses = size === 'sm' ? 'px-2 py-1.5 text-xs' : 'px-3 py-2 text-sm';
+
+  return (
+    <div ref={dropdownRef} className={`relative ${className}`}>
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className={`w-full ${buttonSizeClasses} border border-gray-300 rounded-md bg-white text-left focus:outline-none focus:ring-2 focus:ring-blue-500 flex items-center justify-between`}
+      >
+        <span className="truncate">
+          {selectedOption ? selectedOption.name : placeholder}
+        </span>
+        <ChevronDownIcon className={`w-4 h-4 text-gray-400 flex-shrink-0 ml-2 transition-transform ${isOpen ? 'transform rotate-180' : ''}`} />
+      </button>
+
+      {isOpen && (
+        <div className="absolute z-50 w-full bottom-full mb-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto" role="listbox">
+          <div
+            role="option"
+            aria-selected={!value}
+            className={`${optionSizeClasses} text-gray-500 cursor-default hover:bg-gray-50`}
+            onClick={() => {
+              onChange('');
+              setIsOpen(false);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                onChange('');
+                setIsOpen(false);
+              }
+            }}
+            tabIndex={0}
+          >
+            {placeholder}
+          </div>
+          {options.map((option) => (
+            <div
+              key={option.name}
+              role="option"
+              aria-selected={value === option.name}
+              onClick={() => {
+                onChange(option.name);
+                setIsOpen(false);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  onChange(option.name);
+                  setIsOpen(false);
+                }
+              }}
+              tabIndex={0}
+              className={`${optionSizeClasses} cursor-pointer hover:bg-blue-50 flex items-center justify-between gap-3 ${
+                value === option.name ? 'bg-blue-100' : ''
+              }`}
+            >
+              <span className="font-medium truncate">{option.name} ({option.unique_count})</span>
+              <span className="text-gray-500 text-xs flex-shrink-0">{option.semantic_type}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 interface WidgetSettingsSidebarProps {
   widget: Widget | null;
@@ -33,8 +130,53 @@ export const WidgetSettingsSidebar = ({ widget, dashboardId, isOpen, onClose, on
   const generationPrompt = widget?.generation_prompt || null;
   
   const { data: dataSources } = useDataSources();
+  const { data: existingWidgets } = useWidgets(dashboardId);
   const createWidget = useCreateWidget(dashboardId);
   const updateWidget = useUpdateWidget(widget?.id || '');
+
+  // Function to find first available position in grid
+  const findAvailablePosition = () => {
+    const GRID_COLS = 12;
+    const newWidgetWidth = 4;
+    const newWidgetHeight = 6;
+    
+    if (!existingWidgets || existingWidgets.length === 0) {
+      return { x: 0, y: 0, w: newWidgetWidth, h: newWidgetHeight };
+    }
+
+    // Create a map of occupied positions
+    const occupiedCells = new Set<string>();
+    existingWidgets.forEach((w) => {
+      for (let y = w.position.y; y < w.position.y + w.position.h; y++) {
+        for (let x = w.position.x; x < w.position.x + w.position.w; x++) {
+          occupiedCells.add(`${x},${y}`);
+        }
+      }
+    });
+
+    // Find the first available position row by row
+    const maxY = Math.max(...existingWidgets.map(w => w.position.y + w.position.h), 0);
+    for (let y = 0; y <= maxY + 10; y++) {
+      for (let x = 0; x <= GRID_COLS - newWidgetWidth; x++) {
+        // Check if this position has enough space
+        let canFit = true;
+        for (let dy = 0; dy < newWidgetHeight && canFit; dy++) {
+          for (let dx = 0; dx < newWidgetWidth && canFit; dx++) {
+            if (occupiedCells.has(`${x + dx},${y + dy}`)) {
+              canFit = false;
+            }
+          }
+        }
+        
+        if (canFit) {
+          return { x, y, w: newWidgetWidth, h: newWidgetHeight };
+        }
+      }
+    }
+
+    // Fallback: place at bottom
+    return { x: 0, y: maxY, w: newWidgetWidth, h: newWidgetHeight };
+  };
 
   useEffect(() => {
     if (widget) {
@@ -59,15 +201,21 @@ export const WidgetSettingsSidebar = ({ widget, dashboardId, isOpen, onClose, on
     if (isNewWidget) {
       const chartTypes = ['line', 'bar', 'pie', 'area', 'scatter', 'heatmap'];
       if (chartTypes.includes(widgetType) || widgetType === 'metric' || widgetType === 'gauge') {
-        setConfig((prev: any) => ({
-          ...prev,
-          aggregation: prev.aggregation || 'sum',
-        }));
+        setConfig((prev: any) => {
+          // Only update if aggregation is not already set
+          if (!prev.aggregation) {
+            return { ...prev, aggregation: 'sum' };
+          }
+          return prev;
+        });
       } else if (widgetType === 'table') {
-        setConfig((prev: any) => ({
-          ...prev,
-          limit: prev.limit || 100,
-        }));
+        setConfig((prev: any) => {
+          // Only update if limit is not already set
+          if (!prev.limit) {
+            return { ...prev, limit: 100 };
+          }
+          return prev;
+        });
       }
     }
   }, [widgetType, isNewWidget]);
@@ -75,9 +223,9 @@ export const WidgetSettingsSidebar = ({ widget, dashboardId, isOpen, onClose, on
   const handleSave = () => {
     // Split config into query_config and chart_config
     const queryFields = ['filters', 'aggregation', 'date_column', 'date_range', 
-                         'comparison_period', 'limit', 'sort_by', 'group_by'];
+                         'comparison_period', 'limit', 'sort_by', 'group_by', 'metric'];
     const chartFields = ['chart_type', 'x_axis', 'y_axis', 'colors', 'show_legend', 
-                        'show_grid', 'format', 'columns', 'min_value', 'max_value', 'metric', 
+                        'show_grid', 'format', 'columns', 'min_value', 'max_value', 
                         'prefix', 'suffix'];
     
     const query_config: any = {};
@@ -92,13 +240,8 @@ export const WidgetSettingsSidebar = ({ widget, dashboardId, isOpen, onClose, on
     });
     
     if (isNewWidget) {
-      // Calculate position for new widget (place at bottom)
-      const position = {
-        x: 0,
-        y: 1000, // Place at a high y value, will be adjusted by grid
-        w: 4,
-        h: 6,
-      };
+      // Calculate position for new widget using smart positioning
+      const position = findAvailablePosition();
       
       createWidget.mutate({
         widget_type: widgetType as any,
@@ -151,7 +294,19 @@ export const WidgetSettingsSidebar = ({ widget, dashboardId, isOpen, onClose, on
 
   // Get available columns from selected data source
   const selectedDataSource = dataSources?.find(ds => ds.id === (widget?.data_source_id || dataSourceId));
-  const availableColumns = selectedDataSource?.schema_metadata?.columns?.map((col: any) => col.name) || [];
+  const availableColumns = selectedDataSource?.schema_metadata?.columns || [];
+  
+  // Filter columns by semantic type
+  const metricTypes = ['numeric', 'integer', 'float', 'number', 'continuous', 'metric'];
+  const categoricalTypes = ['categorical', 'text', 'string', 'date', 'datetime', 'date_time', 'boolean', 'ordinal', 'nominal'];
+  
+  const metricColumns = availableColumns.filter((col: any) => 
+    metricTypes.includes(col.semantic_type?.toLowerCase())
+  );
+  
+  const categoricalColumns = availableColumns.filter((col: any) => 
+    categoricalTypes.includes(col.semantic_type?.toLowerCase())
+  );
 
   return (
     <>
@@ -280,36 +435,26 @@ export const WidgetSettingsSidebar = ({ widget, dashboardId, isOpen, onClose, on
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       X-Axis
                     </label>
-                    <select
+                    <ColumnDropdown
                       value={config.x_axis || ''}
-                      onChange={(e) => handleConfigChange('x_axis', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="">Select column...</option>
-                      {availableColumns.map((col: string) => (
-                        <option key={col} value={col}>
-                          {col}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(value) => handleConfigChange('x_axis', value)}
+                      options={categoricalColumns}
+                      placeholder="Select column..."
+                      size="md"
+                    />
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Y-Axis
                     </label>
-                    <select
+                    <ColumnDropdown
                       value={config.y_axis || ''}
-                      onChange={(e) => handleConfigChange('y_axis', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="">Select column...</option>
-                      {availableColumns.map((col: string) => (
-                        <option key={col} value={col}>
-                          {col}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(value) => handleConfigChange('y_axis', value)}
+                      options={metricColumns}
+                      placeholder="Select column..."
+                      size="md"
+                    />
                   </div>
 
                   <div>
@@ -355,18 +500,13 @@ export const WidgetSettingsSidebar = ({ widget, dashboardId, isOpen, onClose, on
                           Remove
                         </button>
                       </div>
-                      <select
+                      <ColumnDropdown
                         value={filter.field || ''}
-                        onChange={(e) => handleFilterChange(index, 'field', e.target.value)}
-                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      >
-                        <option value="">Select field...</option>
-                        {availableColumns.map((col: string) => (
-                          <option key={col} value={col}>
-                            {col}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={(value) => handleFilterChange(index, 'field', value)}
+                        options={availableColumns}
+                        placeholder="Select field..."
+                        size="sm"
+                      />
                       <select
                         value={filter.operator || 'equals'}
                         onChange={(e) => handleFilterChange(index, 'operator', e.target.value)}
@@ -401,18 +541,13 @@ export const WidgetSettingsSidebar = ({ widget, dashboardId, isOpen, onClose, on
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Metric Field
                   </label>
-                  <select
+                  <ColumnDropdown
                     value={config.metric || ''}
-                    onChange={(e) => handleConfigChange('metric', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">Select column...</option>
-                    {availableColumns.map((col: string) => (
-                      <option key={col} value={col}>
-                        {col}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(value) => handleConfigChange('metric', value)}
+                    options={metricColumns}
+                    placeholder="Select column..."
+                    size="md"
+                  />
                 </div>
 
                 <div>

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import GridLayout from 'react-grid-layout';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
@@ -29,23 +29,26 @@ export const DashboardGrid = ({ dashboardId, isEditing = false, selectedWidget, 
   const { data: widgets, isLoading, error } = useWidgets(dashboardId);
   const [isDragging, setIsDragging] = useState(false);
   const [layouts, setLayouts] = useState<LayoutItem[]>([]);
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   
   // Track pending updates
   const pendingUpdates = useRef<Map<string, { x: number; y: number; w: number; h: number }>>(new Map());
 
-  // Update layouts when widgets data changes
-  useEffect(() => {
-    if (widgets) {
-      setLayouts(widgets.map((w) => ({
-        i: w.id,
-        x: w.position.x,
-        y: w.position.y,
-        w: w.position.w,
-        h: w.position.h,
-      })));
-    }
+  // Memoize layouts to prevent unnecessary updates
+  const memoizedLayouts = useMemo(() => {
+    if (!widgets) return [];
+    return widgets.map((w) => ({
+      i: w.id,
+      x: w.position.x,
+      y: w.position.y,
+      w: w.position.w,
+      h: w.position.h,
+    }));
   }, [widgets]);
+
+  // Update layouts only when memoizedLayouts actually change
+  useEffect(() => {
+    setLayouts(memoizedLayouts);
+  }, [memoizedLayouts]);
 
   const handleDragStart = () => {
     setIsDragging(true);
@@ -73,7 +76,6 @@ export const DashboardGrid = ({ dashboardId, isEditing = false, selectedWidget, 
             w: item.w,
             h: item.h
           });
-          setHasUnsavedChanges(true);
         }
       }
     });
@@ -84,7 +86,6 @@ export const DashboardGrid = ({ dashboardId, isEditing = false, selectedWidget, 
     
     const updates = Array.from(pendingUpdates.current.entries());
     pendingUpdates.current.clear();
-    setHasUnsavedChanges(false);
 
     // Update each widget individually
     for (const [widgetId, position] of updates) {
@@ -192,6 +193,7 @@ export const DashboardGrid = ({ dashboardId, isEditing = false, selectedWidget, 
         dashboardId={dashboardId}
         isOpen={selectedWidget !== undefined}
         onClose={() => onSelectWidget(undefined)}
+        onSave={onSave}
       />
     </>
   );

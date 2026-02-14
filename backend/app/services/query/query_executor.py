@@ -178,13 +178,18 @@ class QueryExecutor:
         metric_field = config.get('metric')
         aggregation = config.get('aggregation', 'sum')
         
+        logger.info(f"Executing metric query: metric_field={metric_field}, aggregation={aggregation}, config={config}")
+        logger.info(f"DataFrame columns: {df.columns.tolist()}")
+        
         if not metric_field:
+            logger.error("Metric field is missing from config")
             return {
                 'value': 0,
                 'error': 'metric field is required for metric widgets'
             }
         
         if metric_field not in df.columns:
+            logger.error(f"Metric field '{metric_field}' not found in DataFrame columns: {df.columns.tolist()}")
             return {
                 'value': 0,
                 'error': f'Column {metric_field} not found in data'
@@ -209,12 +214,16 @@ class QueryExecutor:
         # Calculate current value
         current_value = calculate_value(df)
         
-        # Return simplified format for metric widgets
-        return {
+        result = {
             'value': float(current_value) if pd.notna(current_value) else 0,
             'metric': metric_field,
             'aggregation': aggregation
         }
+        
+        logger.info(f"Metric query result: {result}")
+        
+        # Return simplified format for metric widgets
+        return result
             
 
     

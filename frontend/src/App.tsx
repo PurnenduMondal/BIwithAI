@@ -6,6 +6,9 @@ import { MainLayout } from './components/layout/MainLayout';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { LoginForm } from './components/auth/LoginForm';
 import { RegisterForm } from './components/auth/RegisterForm';
+import { Landing } from './pages/Landing';
+import { SelectOrganization } from './pages/SelectOrganization';
+import { AuthTransfer } from './pages/AuthTransfer';
 import { Home } from './pages/Home';
 import { DashboardList } from './pages/DashboardList';
 import { DashboardView } from './pages/DashboardView';
@@ -33,13 +36,16 @@ function App() {
           <BrowserRouter>
             <Routes>         
             {/* Public Routes */}
+            <Route path="/" element={<Landing />} />
             <Route path="/login" element={<LoginForm />} />
             <Route path="/register" element={<RegisterForm />} />
+            <Route path="/select-organization" element={<SelectOrganization />} />
+            <Route path="/auth/transfer" element={<AuthTransfer />} />
 
             {/* Protected Routes */}
             <Route element={<ProtectedRoute />}>
               <Route element={<MainLayout />}>
-                <Route path="/" element={<Home />} />
+                <Route path="/home" element={<Home />} />
                 
                 {/* Dashboards */}
                 <Route path="/dashboards" element={<DashboardList />} />

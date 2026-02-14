@@ -26,7 +26,7 @@ export const Sidebar = () => {
       onMouseLeave={() => setIsCollapsed(true)}
     >
       <div className="flex items-center justify-center h-16 border-b border-gray-800">
-        {!isCollapsed && <h1 className={`text-xl font-bold transition-opacity duration-200 ${isCollapsed ? 'opacity-0' : 'opacity-100 delay-500'}`}>From AI to BI</h1>}
+        {!isCollapsed && <h1 className={`text-xl font-bold transition-opacity duration-200 ${isCollapsed ? 'opacity-0' : 'opacity-100 delay-500'}`}>AI2BI</h1>}
         {isCollapsed && <h1 className="text-xl font-bold">AB</h1>}
       </div>
 

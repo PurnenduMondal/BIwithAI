@@ -4,7 +4,7 @@ import { Sidebar } from './Sidebar';
 
 export const MainLayout = () => {
   const location = useLocation();
-  const isHomePage = location.pathname === '/';
+  const isHomePage = location.pathname === '/' || location.pathname === '/home';
 
   return (
     <div className="flex h-screen bg-gray-100">

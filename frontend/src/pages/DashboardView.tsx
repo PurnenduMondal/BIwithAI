@@ -14,7 +14,6 @@ export const DashboardView = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [selectedWidget, setSelectedWidget] = useState<Widget | null | undefined>(undefined);
   const { lastMessage, subscribe, unsubscribe } = useWebSocket();
-  const saveDashboardRef = useRef<() => Promise<void>>();
 
   const handleSave = async () => {
     if ((window as any).__saveDashboardChanges) {

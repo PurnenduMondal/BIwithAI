@@ -1,22 +1,54 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from datetime import datetime, timezone, timezone
 
 from app.db.session import get_db
 from app.api.deps import get_current_user
-from app.schemas.user import UserResponse, UserUpdate
+from app.schemas.user import UserResponse, UserUpdate, OrganizationMembership
 from app.models.user import User
+from app.models.organization import OrganizationMember, Organization
 from app.core.security import get_password_hash, verify_password
 
 router = APIRouter()
 
 @router.get("/me", response_model=UserResponse)
 async def get_current_user_info(
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
 ):
-    """Get current user information"""
-    return current_user
+    """Get current user information with organization memberships"""
+    # Load user's organization memberships
+    result = await db.execute(
+        select(OrganizationMember, Organization)
+        .join(Organization, OrganizationMember.org_id == Organization.id)
+        .where(OrganizationMember.user_id == current_user.id)
+        .where(Organization.is_active == True)
+    )
+    
+    memberships = []
+    for member, org in result.all():
+        memberships.append(OrganizationMembership(
+            org_id=org.id,
+            org_name=org.name,
+            subdomain=org.subdomain,
+            role=member.role
+        ))
+    
+    # Create response with organizations
+    user_dict = {
+        "id": current_user.id,
+        "email": current_user.email,
+        "full_name": current_user.full_name,
+        "role": current_user.role,
+        "is_active": current_user.is_active,
+        "created_at": current_user.created_at,
+        "last_login": current_user.last_login,
+        "organizations": memberships
+    }
+    
+    return UserResponse(**user_dict)
 
 @router.put("/me", response_model=UserResponse)
 async def update_current_user(

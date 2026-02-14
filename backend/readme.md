@@ -1,5 +1,5 @@
 # ========================================
-# BI with AI - Backend Setup & Commands
+# AI2BI - Backend Setup & Commands
 # ========================================
 
 # Navigate to backend directory

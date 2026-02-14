@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { PaperAirplaneIcon, SparklesIcon, BellIcon, UserCircleIcon, Cog6ToothIcon, ArrowRightOnRectangleIcon, PlusIcon, CircleStackIcon, Bars3Icon, ChatBubbleLeftRightIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { PaperAirplaneIcon, SparklesIcon, BellIcon, UserCircleIcon, Cog6ToothIcon, ArrowRightOnRectangleIcon, PlusIcon, CircleStackIcon, Bars3Icon, ChatBubbleLeftRightIcon, XMarkIcon, BuildingOfficeIcon } from '@heroicons/react/24/outline';
 import { chatApi, ChatMessage as ApiChatMessage, ChatSession } from '../api/chat';
 import { useDataSources } from '../hooks/useDataSource';
 import { useAuth } from '../hooks/useAuth';
+import { getCurrentSubdomain } from '../utils/tenant';
 import { Loader } from '../components/common/Loader';
 import { ChartWidget } from '../components/widgets/ChartWidget';
 import { TableWidget } from '../components/widgets/TableWidget';
@@ -258,6 +259,16 @@ export const Home = () => {
             <h1 className="text-xl font-bold text-gray-900">AI to BI Assistant</h1>
             <p className="text-xs text-gray-600">Ask questions about your data in natural language</p>
           </div>
+          {(() => {
+            const currentSubdomain = getCurrentSubdomain();
+            const currentOrg = user?.organizations?.find(org => org.subdomain === currentSubdomain);
+            return currentOrg ? (
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg border border-blue-200">
+                <BuildingOfficeIcon className="w-4 h-4" />
+                <span className="text-sm font-medium">{currentOrg.org_name}</span>
+              </div>
+            ) : null;
+          })()}
         </div>
         
         <div className="flex items-center space-x-4">

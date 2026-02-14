@@ -1,3 +1,10 @@
+export interface OrganizationMembership {
+  org_id: string;
+  org_name: string;
+  subdomain: string | null;
+  role: 'admin' | 'member' | 'viewer';
+}
+
 export interface User {
   id: string;
   email: string;
@@ -6,6 +13,7 @@ export interface User {
   is_active: boolean;
   created_at: string;
   last_login: string | null;
+  organizations: OrganizationMembership[];
 }
 
 export interface Organization {
